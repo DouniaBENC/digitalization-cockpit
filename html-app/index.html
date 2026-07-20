@@ -1,0 +1,2280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Digitalization Program Cockpit</title>
+<script src="https://cdn.jsdelivr.net/npm/preact@10.23.1/dist/preact.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/preact@10.23.1/hooks/dist/hooks.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgen/3.12.0/pptxgen.bundle.js"></script>
+<style>
+:root { --bg:#f5f6f8; --card:#fff; --border:#e2e5ea; --text:#1a2233; --muted:#66708a;
+  --accent:#1f4fd8; --accent-soft:#e8eefc; --green:#1a8f4d; --green-soft:#e3f5ea;
+  --red:#c9342c; --red-soft:#fdeceb; --amber:#b26a00; --amber-soft:#fff3e0;
+  --purple:#6d3fc0; --purple-soft:#f0e9fb; --radius:10px; }
+*{box-sizing:border-box} html,body{overflow-x:hidden}
+body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+a{color:var(--accent);text-decoration:none;cursor:pointer}
+h1{font-size:20px;margin:0 0 4px} h2{font-size:16px;margin:0 0 8px} h3{font-size:14px;margin:0 0 6px}
+.app{display:flex;min-height:100vh}
+.sidebar{width:220px;background:#101a33;color:#cfd6e6;padding:16px 0;flex-shrink:0;display:flex;flex-direction:column}
+.sidebar .brand{padding:0 16px 16px;color:#fff;font-weight:700;font-size:15px;line-height:1.3;border-bottom:1px solid #24304f;margin-bottom:8px}
+.sidebar nav a{display:block;padding:9px 16px;color:#cfd6e6;font-size:13.5px;border-left:3px solid transparent}
+.sidebar nav a.active{background:#1c2947;color:#fff;border-left-color:var(--accent)}
+.sidebar nav a:hover{background:#18233f}
+.sidebar .foot{margin-top:auto;padding:12px 16px;font-size:12px;color:#8892ab;border-top:1px solid #24304f}
+.main{flex:1;padding:16px 18px;max-width:1500px;min-width:0}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.grid{display:grid;gap:12px}.grid.cols-2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}.grid.cols-4{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+@media(max-width:1000px){.grid.cols-4{grid-template-columns:repeat(2,1fr)}.grid.cols-2{grid-template-columns:1fr}}
+.btn{display:inline-block;background:var(--accent);color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:13.5px;cursor:pointer;font-weight:600}
+.btn:hover{filter:brightness(1.08)}
+.btn.secondary{background:#fff;color:var(--text);border:1px solid var(--border)}
+.btn.danger{background:var(--red)} .btn.small{padding:4px 10px;font-size:12.5px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.badge.blue{background:var(--accent-soft);color:var(--accent)} .badge.green{background:var(--green-soft);color:var(--green)}
+.badge.red{background:var(--red-soft);color:var(--red)} .badge.amber{background:var(--amber-soft);color:var(--amber)}
+.badge.purple{background:var(--purple-soft);color:var(--purple)} .badge.gray{background:#eef0f4;color:var(--muted)}
+table.data{width:100%;border-collapse:collapse;font-size:13px}
+table.data th{text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+table.data td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+table.data tr:hover td{background:#fafbfd}
+.field{margin-bottom:12px}
+.field label{display:block;font-weight:600;font-size:12.5px;margin-bottom:4px}
+.field .hint{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px}
+.field input[type=text],.field input[type=email],.field input[type=password],.field input[type=date],.field select,.field textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13.5px;font-family:inherit;background:#fff}
+.field textarea{min-height:80px;resize:vertical}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.checks label{font-weight:400;font-size:13px;display:flex;align-items:center;gap:5px;background:#f2f4f8;padding:5px 10px;border-radius:7px;cursor:pointer}
+.kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
+.kanban .col{min-width:240px;flex:1;background:#eef0f5;border-radius:var(--radius);padding:10px}
+.kanban .col h3{font-size:12.5px;text-transform:uppercase;color:var(--muted);letter-spacing:.3px;display:flex;justify-content:space-between}
+.kcard{background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer}
+.kcard:hover{border-color:var(--accent)}
+.kcard .title{font-weight:600;font-size:13px;margin:2px 0 6px}
+.kcard .meta{display:flex;gap:5px;flex-wrap:wrap}
+.kpi{text-align:center;padding:14px 8px}.kpi .num{font-size:26px;font-weight:700}.kpi .lbl{font-size:12px;color:var(--muted);margin-top:2px}
+.roadmap-note{background:var(--purple-soft);border:1px dashed var(--purple);color:#4a2d85;border-radius:var(--radius);padding:10px 14px;font-size:12.5px;margin-bottom:14px}
+.progress{background:#eef0f4;border-radius:999px;height:8px;overflow:hidden}
+.progress>div{height:100%;border-radius:999px;transition:width .3s}
+.modal-backdrop{position:fixed;inset:0;background:rgba(16,26,51,.45);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal{background:#fff;border-radius:12px;padding:20px;width:min(560px,92vw);max-height:88vh;overflow-y:auto}
+.checklist li{list-style:none;padding:4px 0;font-size:13px}.checklist{padding-left:0;margin:8px 0}
+.tabs{display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--border)}
+.tabs button{background:none;border:none;padding:8px 14px;font-size:13.5px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-weight:600}
+.tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.filters select,.filters input{padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:#fff}
+.activity-item{padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.activity-item .who{font-weight:600}.activity-item .when{color:var(--muted);font-size:11.5px}
+.alert-line{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#101a33}
+.login-card{background:#fff;border-radius:14px;padding:32px;width:min(400px,92vw)}
+.notif-dot{background:var(--red);color:#fff;border-radius:999px;font-size:10.5px;padding:1px 6px;margin-left:6px}
+.muted{color:var(--muted)}.small{font-size:12px}.mb0{margin-bottom:0}
+.bubble-wrap{position:relative}
+.bubble-tip{position:absolute;background:#101a33;color:#fff;padding:6px 10px;border-radius:7px;font-size:12px;pointer-events:none;z-index:5}
+@media print{.sidebar,.topbar,.no-print{display:none!important}.main{padding:0;max-width:none}body{background:#fff}.card{border:none;page-break-inside:avoid}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+/* ============================================================
+   CONFIGURATION — edit these two lines with your Supabase keys
+   (Supabase dashboard -> Settings -> API)
+   ============================================================ */
+var SUPABASE_URL = 'https://rniwiixcqkktibzcrdsw.supabase.co';
+var SUPABASE_ANON_KEY = 'sb_publishable_Xy4XzQFMr8VvEbp_LkTSog_55vRC-SP';
+</script>
+<script>
+'use strict';
+var h = preact.h, render = preact.render, Fragment = preact.Fragment;
+var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
+var html = htm.bind(h);
+var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ================= Constants (spec reference data) ================= */
+var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
+var ACTIVE_STAGES = STAGES.slice(0,5);
+var PILLARS = ['Smart Planning','AI-enhanced Engineering','Agentic AI for Engineering','CTQ & Digital Twin Innovation','Lean and Automated Support','Digital Thread','To Be Confirmed'];
+var FUNCTIONS = ['Engineering','Manufacturing','Installation','Planning','Quality','HR','Legal','Project','Technical Office','Other'];
+var VALUE_TYPES = ['Cost reduction','Cycle time reduction','Quality improvement','Risk reduction','Revenue enablement','Compliance','User experience','Data availability'];
+var EFFORT = ['Low','Medium','High'], URGENCY = EFFORT, DATA_AVAILABILITY = ['Unknown','Low','Medium','High'];
+var COMMITTEES = ['Pillar SteerCo','Digitalization SteerCo'];
+var DECISION_COMMITTEES = COMMITTEES.concat(['Project Meeting']);
+var DECISION_STATUSES = ['To Decide','Decided','Blocked','Deferred','Escalated'];
+var OUTCOMES = ['Go','No-Go','Rework','Hold'];
+var DOC_STATUSES = ['Draft','In Review','Ready for Gate','Approved','Rework'];
+var PROJECT_STAGES = ['S1 (Scoping)','G2 (Business Case)','S2 (Planning)','G3 (Action Plan)','S3 (Execution)','G4 (Implementation)','S4 (Verification)','G5 (Closed)'];
+var ROLES = [
+  { value:'requester', label:'Requester' }, { value:'program_manager', label:'Program Manager' },
+  { value:'transformation_team', label:'Transformation Team' }, { value:'project_lead', label:'Project Manager' }];
+var TRIAGE_SLA_DAYS = 7;
+var GATE_READY_PCT = 80;
+function applyReference(rows, settings) {
+  var m = { pillar: PILLARS, function: FUNCTIONS, value_type: VALUE_TYPES };
+  Object.keys(m).forEach(function(cat) {
+    var vals = (rows || []).filter(function(r){ return r.category === cat && r.active; }).map(function(r){ return r.value; });
+    if (vals.length) { m[cat].length = 0; vals.forEach(function(v){ m[cat].push(v); }); }
+  });
+  (settings || []).forEach(function(s) {
+    if (s.key === 'gate_ready_threshold') GATE_READY_PCT = Number(s.value) || 80;
+    if (s.key === 'triage_sla_days') TRIAGE_SLA_DAYS = Number(s.value) || 7;
+  });
+}
+var ROADMAP_NOTE = 'AI-guided intake and draft generation are planned for a future release. In the MVP, Business Case v0 and Project Charter v0 are generated from structured fields and enriched manually by the Program Manager / Transformation Team.';
+var BC_SECTIONS = [
+  { key:'problem_statement', label:'2. Problem / Opportunity', hint:'What problem are we solving? Who is impacted? Why now?', required:true },
+  { key:'proposed_solution', label:'3. Proposed Concept', hint:'Proposed digitalization / AI solution, operating model change', required:true },
+  { key:'strategic_alignment', label:'4. Strategic Alignment', hint:'Digital pillar, link to business objectives', required:true },
+  { key:'e3_impact_summary', label:'4b. E3 Impact', hint:'Environment, Economy, Engagement', required:false },
+  { key:'expected_benefits', label:'5. Expected Benefits', hint:'Business benefits, target users / functions', required:true },
+  { key:'assumptions', label:'7. Assumptions', hint:'Key assumptions and open questions', required:true },
+  { key:'risks', label:'7b. Main Risks', hint:'Main risks', required:true },
+  { key:'dependencies', label:'7c. Dependencies', hint:'Systems, data, organization', required:true },
+  { key:'cost_estimate', label:'8. Rough Cost / Effort', hint:'CAPEX / OPEX, internal and external effort', required:true },
+  { key:'resource_needs', label:'8b. Resource Needs', hint:'People / skills', required:false },
+  { key:'success_metrics', label:'9. Success Metrics', hint:'Adoption, efficiency, quality KPIs, first value proof date', required:true }];
+var CH_SECTIONS = [
+  { key:'objectives', label:'2. Objectives', hint:'Main objective, expected outcomes', required:true },
+  { key:'scope_in', label:'3. Scope In', hint:'In scope, target users / processes', required:true },
+  { key:'scope_out', label:'3b. Scope Out', hint:'Explicitly out of scope', required:true },
+  { key:'deliverables', label:'4. Deliverables', hint:'MVP / first deliverable, business, technical, change deliverables', required:true },
+  { key:'high_level_timeline', label:'6. Timeline', hint:'Indicative start / end, key milestones', required:true },
+  { key:'stakeholders', label:'7. Roles & Stakeholders', hint:'Sponsor, business owner, leads, key stakeholders', required:false },
+  { key:'dependencies', label:'8. Dependencies', hint:'Data, systems, resources, other projects', required:true },
+  { key:'governance_path', label:'5. Governance & Decision Path', hint:'Target gate, committee, required decision', required:true }];
+
+/* ================= Pure business logic (spec §6 §14) ================= */
+var SCORE = { Low:1, Medium:2, High:3 };
+function complexityScore(i) {
+  var vals = [i.resources_effort, i.cost_effort, i.change_effort, i.technical_effort].map(function(v){return SCORE[v]||0}).filter(Boolean);
+  if (!vals.length) return null;
+  return vals.reduce(function(a,b){return a+b},0)/vals.length;
+}
+function impactScore(i) {
+  var s = 0;
+  if (i.urgency) s += SCORE[i.urgency];
+  s += Math.min((i.expected_value_types||[]).length,3)*0.5;
+  s += [i.e3_environment,i.e3_economy,i.e3_engagement].filter(Boolean).length*0.5;
+  if (i.estimated_value) s += 1;
+  return s;
+}
+function suggestQuickWin(i) {
+  var cx = complexityScore(i);
+  return Boolean(i.estimated_value && cx !== null && cx <= 2 && (i.cost_effort === 'Low' || !i.cost_effort));
+}
+function suggestPriority(i) {
+  return Boolean(i.urgency === 'High' && ((i.impacted_functions||[]).length >= 2 || i.digital_pillar));
+}
+function daysInTriage(i) {
+  if (['L0 Submitted','L0 Triage'].indexOf(i.stage) < 0) return 0;
+  return Math.floor((Date.now() - new Date(i.submitted_date)) / 86400000);
+}
+function triageOverdue(i) { return daysInTriage(i) > TRIAGE_SLA_DAYS; }
+function l1Criteria(i) {
+  return [
+    { label:'Not an obvious duplicate, or duplicate relationship documented', ok:true },
+    { label:'Fits a digital pillar or marked "To Be Confirmed"', ok:!!i.digital_pillar },
+    { label:'Clear problem / opportunity statement', ok:(i.opportunity||'').length >= 30 },
+    { label:'Plausible business benefit', ok:(i.business_benefits||'').length >= 20 },
+    { label:'Identified owner for next-step assessment', ok:!!i.owner_id },
+    { label:'Within digitalization scope (triage note if unclear)', ok:true }];
+}
+function l2Criteria(i) {
+  return [
+    { label:'Sponsor or provisional sponsor identified', ok:!!i.provisional_sponsor },
+    { label:'Impacted function(s) identified', ok:(i.impacted_functions||[]).length > 0 },
+    { label:'Expected value type selected', ok:(i.expected_value_types||[]).length > 0 },
+    { label:'Complexity / effort assessment completed', ok:complexityScore(i) !== null },
+    { label:'Initial risks and system dependencies documented', ok:!!i.risks_challenges || !!i.interface_systems }];
+}
+function completeness(doc, sections) {
+  var req = sections.filter(function(s){return s.required});
+  var done = req.filter(function(s){return ((doc[s.key]||'').trim().length >= 10)});
+  return { done:done.length, total:req.length, pct:Math.round(done.length/req.length*100),
+    missing:req.filter(function(s){return (doc[s.key]||'').trim().length < 10}).map(function(s){return s.label}) };
+}
+function bcCompleteness(d){ return completeness(d, BC_SECTIONS); }
+function chCompleteness(d){ return completeness(d, CH_SECTIONS); }
+function g1Criteria(i, bc, ch) {
+  var bcc = (bc && bc.content) || {}, chc = (ch && ch.content) || {};
+  return [
+    { label:'Business Case complete enough for decision', ok:bc ? bcCompletenessLean(bc).pct >= GATE_READY_PCT : false },
+    { label:'Project Charter complete enough for decision', ok:ch ? chCompletenessLean(ch).pct >= GATE_READY_PCT : false },
+    { label:'Explicit recommendation (Go / No-Go / Rework / Hold)', ok:!!(bc && bc.recommendation) },
+    { label:'Rough budget / effort estimate documented', ok:!!bcc.estimated_cost },
+    { label:'Benefits and success measures documented', ok:!!(bcc.expected_benefits && (bcc.kpis||[]).length) },
+    { label:'Scope in / scope out documented', ok:!!(chc.in_scope && chc.out_scope) },
+    { label:'Risks, dependencies, assumptions documented', ok:!!((bcc.risks||[]).length && bcc.critical_assumption) },
+    { label:'Project Manager (lead) proposed', ok:!!(ch && ch.project_lead) },
+    { label:'Committee target selected', ok:!!(i.committee_target || (bc && bc.committee_target)) }];
+}
+function conversionCriteria(i, decisions) {
+  var g1 = (decisions||[]).find(function(d){ return d.related_id === i.idea_id && d.status === 'Decided' && d.outcome === 'Go'; });
+  return [
+    { label:'A Go decision is logged for this initiative in the Decision Log', ok:!!g1 },
+    { label:'Committee decision logged', ok:!!g1 }];
+}
+function projectAlerts(p, hasInAppCharter) {
+  var a = [], today = new Date();
+  var closed = (p.current_stage||'').indexOf('G5') === 0 || (p.current_stage||'').indexOf('S4') === 0;
+  if (p.planned_end_date && new Date(p.planned_end_date) < today && !closed) a.push({type:'planning',msg:'Planned end date passed'});
+  if (p.planned_start_date && new Date(p.planned_start_date) < today && (p.current_stage||'').indexOf('S1') === 0) a.push({type:'planning',msg:'Started per plan but still in Scoping'});
+  if (p.capex_keur == null && p.current_year_budget == null) a.push({type:'budget',msg:'No CAPEX / budget data'});
+  if (!hasInAppCharter && (!p.charter_status || p.charter_status === 'Not created')) a.push({type:'governance',msg:'Charter missing'});
+  if (p.it_demand_status === 'Not created') a.push({type:'governance',msg:'IT demand not created'});
+  if (p.ar_status === 'Not created') a.push({type:'governance',msg:'AR not created'});
+  var na = (p.needs_attention||'').toLowerCase();
+  if (na.indexOf('budget') >= 0) a.push({type:'budget',msg:'Flagged: budget attention'});
+  if (na.indexOf('planning') >= 0) a.push({type:'planning',msg:'Flagged: planning attention'});
+  return a;
+}
+function charterMap(charters) {
+  var m = {};
+  (charters || []).forEach(function(ch){ if (ch.smartsheet_project_id) m[ch.smartsheet_project_id] = ch; });
+  return m;
+}
+function isPriorityProject(p){ return (p.needs_attention||'').toLowerCase().indexOf('priority') >= 0; }
+function isQuickWinProject(p){ return (p.needs_attention||'').toLowerCase().indexOf('quick win') >= 0; }
+
+/* ================= Data access layer (Supabase) ================= */
+function one(r) { if (r.error) throw r.error; return r.data; }
+var api = {
+  getSession: function(){ return sb.auth.getSession().then(function(r){ return r.data.session; }); },
+  onAuthChange: function(cb){ return sb.auth.onAuthStateChange(function(_e,s){ cb(s); }); },
+  signIn: function(email,pw){ return sb.auth.signInWithPassword({email:email,password:pw}).then(one); },
+  signUp: function(email,pw,name){ return sb.auth.signUp({email:email,password:pw,options:{data:{name:name}}}).then(one); },
+  signOut: function(){ return sb.auth.signOut(); },
+  getMyProfile: function(){ return api.getSession().then(function(s){
+    if (!s) return null;
+    return sb.from('profiles').select('*').eq('id', s.user.id).maybeSingle().then(one).then(function(p){
+      if (p) return p;
+      var meta = (s.user.user_metadata || {});
+      return sb.from('profiles').insert({ id: s.user.id, email: s.user.email,
+        name: meta.name || (s.user.email || '').split('@')[0] }).select().single().then(one);
+    }); }); },
+  listProfiles: function(){ return sb.from('profiles').select('*').order('name').then(one); },
+  updateProfileRole: function(id,role){ return sb.from('profiles').update({role:role}).eq('id',id).select().then(one); },
+  listIdeas: function(){ return sb.from('ideas').select('*, requester:requester_id(name), owner:owner_id(name)').order('created_at',{ascending:false}).then(one); },
+  getIdea: function(id){ return sb.from('ideas').select('*, requester:requester_id(name,email), owner:owner_id(name)').eq('id',id).single().then(one); },
+  createIdea: function(f){ return sb.from('ideas').insert(f).select().single().then(one); },
+  updateIdea: function(id,f){ return sb.from('ideas').update(f).eq('id',id).select().single().then(one); },
+  qualifyIdea: function(id){ return sb.rpc('qualify_idea',{p_idea:id}).then(one); },
+  convertToProject: function(id,pid,lead){ return sb.rpc('convert_to_project',{p_idea:id,p_project_id:pid,p_project_lead:lead}).then(one); },
+  getBCByIdea: function(id){ return sb.from('business_cases').select('*').eq('idea_id',id).order('created_at',{ascending:false}).limit(1).then(one).then(function(r){return r[0]||null}); },
+  updateBC: function(id,f){ return sb.from('business_cases').update(f).eq('id',id).select().single().then(one); },
+  getCharterByIdea: function(id){ return sb.from('project_charters').select('*').eq('idea_id',id).order('created_at',{ascending:false}).limit(1).then(one).then(function(r){return r[0]||null}); },
+  updateCharter: function(id,f){ return sb.from('project_charters').update(f).eq('id',id).select().single().then(one); },
+  saveVersion: function(t,id,label,snap,uid){ return sb.from('document_versions').insert({doc_type:t,doc_id:id,version_label:label,snapshot:snap,saved_by:uid}).select().then(one); },
+  listVersions: function(t,id){ return sb.from('document_versions').select('*, saver:saved_by(name)').eq('doc_type',t).eq('doc_id',id).order('created_at',{ascending:false}).then(one); },
+  listDecisions: function(){ return sb.from('decisions').select('*, owner:owner_id(name), action_owner:action_owner_id(name)').order('due_date',{ascending:true,nullsFirst:false}).then(one); },
+  createDecision: function(f){ return sb.from('decisions').insert(f).select().single().then(one); },
+  updateDecision: function(id,f){ return sb.from('decisions').update(f).eq('id',id).select().single().then(one); },
+  listProjects: function(){ return sb.from('projects').select('*').order('project_id').then(one); },
+  upsertProjects: function(rows){ return sb.from('projects').upsert(rows,{onConflict:'project_id'}).select().then(one); },
+  updateProject: function(id,f){ return sb.from('projects').update(f).eq('id',id).select().single().then(one); },
+  listChartersLight: function(){ return sb.from('project_charters').select('id, idea_id, charter_id, version, status, smartsheet_project_id').then(one); },
+  listReference: function(){ return sb.from('app_reference').select('*').order('category').order('sort_order').order('value').then(one); },
+  addReference: function(cat, value, sort){ return sb.from('app_reference').insert({category:cat, value:value, sort_order:sort}).select().then(one); },
+  setReferenceActive: function(id, active){ return sb.from('app_reference').update({active:active}).eq('id',id).select().then(one); },
+  renameReference: function(cat, oldV, newV, prop){ return sb.rpc('rename_reference', {p_category:cat, p_old:oldV, p_new:newV, p_propagate:prop}).then(one); },
+  getSettings: function(){ return sb.from('app_settings').select('*').then(one); },
+  setSetting: function(key, value){ return sb.from('app_settings').upsert({key:key, value:value, updated_at:new Date().toISOString()}).select().then(one); },
+  existingProjectIds: function(){ return sb.from('projects').select('project_id').then(one).then(function(rows){ return new Set(rows.map(function(r){return r.project_id})); }); },
+  listActivity: function(t,id){ return sb.from('activity').select('*, user:user_id(name)').eq('related_type',t).eq('related_id',id).order('created_at',{ascending:false}).then(one); },
+  addComment: function(t,id,uid,msg){ return sb.from('activity').insert({related_type:t,related_id:id,user_id:uid,kind:'comment',message:msg}).select().then(one); },
+  listNotifications: function(){ return api.getSession().then(function(s){
+    return sb.from('notifications').select('*').eq('recipient_id',s.user.id).order('created_at',{ascending:false}).limit(100).then(one); }); },
+  markNotificationRead: function(id){ return sb.from('notifications').update({read:true}).eq('id',id).select().then(one); },
+  markAllRead: function(){ return api.getSession().then(function(s){
+    return sb.from('notifications').update({read:true}).eq('recipient_id',s.user.id).eq('read',false).select().then(one); }); },
+};
+
+/* ================= SmartSheet import/export ================= */
+var SMARTSHEET_COLUMNS = ['Id','Needs attention','Project Category','Project Name','Current Stage','Digital Pillar','Key Benefiting Functions','Project Execution phase','Pillar Sponsor','Project Description','Project Lead','PWR-T IT lead','Integrator/Consultants','Charter Status','Charter file','IT Demand Status','AR Status','AR file','CAPEX k€','Current Y Budget','Cost Center/Internal Order','Planned Start Date','Planned End Date','Linked Initiatives #'];
+var FIELD_MAP = {'Id':'project_id','Needs attention':'needs_attention','Project Category':'project_category','Project Name':'project_name','Current Stage':'current_stage','Digital Pillar':'digital_pillar','Key Benefiting Functions':'key_benefiting_functions','Project Execution phase':'execution_phase','Pillar Sponsor':'pillar_sponsor','Project Description':'project_description','Project Lead':'project_lead','PWR-T IT lead':'pwt_it_lead','Integrator/Consultants':'integrator_consultants','Charter Status':'charter_status','Charter file':'charter_file','IT Demand Status':'it_demand_status','AR Status':'ar_status','AR file':'ar_file','CAPEX k€':'capex_keur','Current Y Budget':'current_year_budget','Cost Center/Internal Order':'cost_center_internal_order','Planned Start Date':'planned_start_date','Planned End Date':'planned_end_date','Linked Initiatives #':'linked_initiative_id'};
+function ssToDate(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return v.toISOString().slice(0,10);
+  if (typeof v === 'number') { var d = XLSX.SSF.parse_date_code(v); if (!d) return null;
+    return d.y + '-' + String(d.m).padStart(2,'0') + '-' + String(d.d).padStart(2,'0'); }
+  var d2 = new Date(v); return isNaN(d2) ? null : d2.toISOString().slice(0,10);
+}
+function ssToNum(v) { if (v == null || v === '') return null; var n = Number(String(v).replace(',','.')); return isNaN(n) ? null : n; }
+function parseSmartsheetFile(file) {
+  return file.arrayBuffer().then(function(buf){
+    var wb = XLSX.read(buf, {cellDates:true});
+    var sheet = null;
+    for (var k = 0; k < wb.SheetNames.length; k++) {
+      var head = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[k]], {header:1, range:0})[0] || [];
+      if (head.indexOf('Id') >= 0 && head.indexOf('Project Name') >= 0) { sheet = wb.Sheets[wb.SheetNames[k]]; break; }
+    }
+    if (!sheet) throw new Error('No sheet with SmartSheet columns (Id, Project Name) found');
+    var raw = XLSX.utils.sheet_to_json(sheet, {defval:null});
+    var warnings = [];
+    var headers = Object.keys(raw[0] || {});
+    headers.forEach(function(hd){ if (SMARTSHEET_COLUMNS.indexOf(hd) < 0) warnings.push('Unknown column ignored: "' + hd + '"'); });
+    SMARTSHEET_COLUMNS.forEach(function(c){ if (headers.indexOf(c) < 0) warnings.push('Missing column: "' + c + '"'); });
+    var rows = raw.filter(function(r){ return r['Id']; }).map(function(r){
+      var out = {};
+      Object.keys(FIELD_MAP).forEach(function(col){
+        var field = FIELD_MAP[col], v = r[col];
+        if (field === 'planned_start_date' || field === 'planned_end_date') v = ssToDate(v);
+        else if (field === 'capex_keur' || field === 'current_year_budget') v = ssToNum(v);
+        else if (typeof v === 'string') v = v.trim() || null;
+        out[field] = (v === undefined) ? null : v;
+      });
+      return out;
+    });
+    var seen = new Set();
+    rows.forEach(function(r){ if (seen.has(r.project_id)) warnings.push('Duplicate project Id in file: ' + r.project_id); seen.add(r.project_id); });
+    return { rows: rows, warnings: warnings };
+  });
+}
+function exportInitiativesToSmartsheet(items, filename) {
+  var data = items.map(function(it){
+    var idea = it.idea, charter = it.charter, bc = it.bc, row = {};
+    row['Id'] = idea.linked_project_id || '';
+    row['Needs attention'] = [idea.priority && 'Priority', idea.quick_win && 'Quick Win'].filter(Boolean).join(', ');
+    row['Project Category'] = 'Digitalization';
+    row['Project Name'] = idea.title;
+    row['Current Stage'] = 'S1 (Scoping)';
+    row['Digital Pillar'] = idea.digital_pillar || '';
+    row['Key Benefiting Functions'] = (idea.impacted_functions||[]).join(', ');
+    row['Project Execution phase'] = 'Discovery';
+    row['Pillar Sponsor'] = (charter && charter.sponsor) || idea.provisional_sponsor || '';
+    row['Project Description'] = idea.opportunity || '';
+    row['Project Lead'] = (charter && charter.project_lead) || '';
+    row['PWR-T IT lead'] = ''; row['Integrator/Consultants'] = '';
+    row['Charter Status'] = charter ? (charter.status === 'Approved' ? 'Approved' : 'Created & not approved') : 'Not created';
+    row['Charter file'] = ''; row['IT Demand Status'] = 'Not created'; row['AR Status'] = 'Not created'; row['AR file'] = '';
+    row['CAPEX k€'] = (bc && ((bc.content && bc.content.estimated_cost) || bc.cost_estimate)) || ''; row['Current Y Budget'] = ''; row['Cost Center/Internal Order'] = '';
+    row['Planned Start Date'] = ''; row['Planned End Date'] = '';
+    row['Linked Initiatives #'] = idea.idea_id;
+    return row;
+  });
+  var ws = XLSX.utils.json_to_sheet(data, {header:SMARTSHEET_COLUMNS});
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Projects');
+  XLSX.writeFile(wb, filename);
+}
+function validateForExport(idea, charter) {
+  var e = [];
+  if (!idea.linked_project_id) e.push('Missing project ID');
+  if (!idea.title) e.push('Missing project name');
+  if (!idea.digital_pillar) e.push('Missing digital pillar');
+  if (!charter || !charter.project_lead) e.push('Missing project lead in charter');
+  return e;
+}
+
+/* ================= UI helpers ================= */
+function fmtDate(d){ return d ? new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'; }
+function fmtDateTime(d){ return d ? new Date(d).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'; }
+function Badge(p){ return html`<span class="badge ${p.color||'gray'}">${p.children}</span>`; }
+function StageBadge(p){
+  var colors = {'L0 Submitted':'gray','L0 Triage':'amber','L1 Qualified':'blue','L2 BC/Charter':'purple','G1 Approval':'amber','Converted':'green','Rejected':'red','Hold':'gray'};
+  return html`<${Badge} color=${colors[p.stage]||'gray'}>${p.stage}<//>`;
+}
+function Modal(p) {
+  return html`<div class="modal-backdrop" onClick=${p.onClose}>
+    <div class="modal" onClick=${function(e){e.stopPropagation()}}>
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+        <h2 class="mb0">${p.title}</h2>
+        <button class="btn secondary small" onClick=${p.onClose}>✕</button>
+      </div>${p.children}</div></div>`;
+}
+function Field(p) {
+  return html`<div class="field"><label>${p.label}${p.hint && html`<span class="hint">${p.hint}</span>`}</label>${p.children}</div>`;
+}
+function MultiCheck(p) {
+  var value = p.value || [];
+  function toggle(o){ p.onChange(value.indexOf(o) >= 0 ? value.filter(function(v){return v!==o}) : value.concat([o])); }
+  return html`<div class="checks">${p.options.map(function(o){
+    return html`<label key=${o}><input type="checkbox" checked=${value.indexOf(o)>=0} onChange=${function(){toggle(o)}} /> ${o}</label>`; })}</div>`;
+}
+function Checklist(p) {
+  return html`<ul class="checklist">${p.items.map(function(c,i){
+    return html`<li key=${i}>${c.ok ? '✅' : '⬜'} ${c.label}</li>`; })}</ul>`;
+}
+function Progress(p) {
+  var col = p.pct >= 80 ? 'var(--green)' : p.pct >= 40 ? 'var(--amber)' : 'var(--red)';
+  return html`<div class="progress"><div style="width:${p.pct}%;background:${col}"></div></div>`;
+}
+function RoadmapNote(){ return html`<div class="roadmap-note">🔮 <b>Roadmap:</b> ${ROADMAP_NOTE}</div>`; }
+function useAsync(fn, deps) {
+  var st = useState({loading:true, data:null, error:null});
+  var state = st[0], setState = st[1];
+  function reload() {
+    setState(function(s){ return {loading:true, data:s.data, error:null}; });
+    fn().then(function(data){ setState({loading:false, data:data, error:null}); })
+      .catch(function(error){ setState({loading:false, data:null, error:error}); });
+  }
+  useEffect(reload, deps || []);
+  return { loading:state.loading, data:state.data, error:state.error, reload:reload };
+}
+/* hash router */
+function useRoute() {
+  var st = useState(location.hash.slice(1) || '/');
+  useEffect(function(){
+    function onHash(){ st[1](location.hash.slice(1) || '/'); }
+    window.addEventListener('hashchange', onHash);
+    return function(){ window.removeEventListener('hashchange', onHash); };
+  }, []);
+  return st[0];
+}
+function nav(path){ location.hash = path; }
+function A(p){ return html`<a href=${'#'+p.href} class=${p.class||''}>${p.children}</a>`; }
+
+/* ================= Login ================= */
+function Login() {
+  var m = useState('signin'), mode = m[0], setMode = m[1];
+  var em = useState(''), pw = useState(''), nm = useState('');
+  var er = useState(null), inf = useState(null), bz = useState(false);
+  function submit(e) {
+    e.preventDefault(); bz[1](true); er[1](null); inf[1](null);
+    var pr = mode === 'signin' ? api.signIn(em[0], pw[0])
+      : api.signUp(em[0], pw[0], nm[0]).then(function(){ inf[1]('Account created. If email confirmation is enabled, check your inbox; otherwise sign in.'); setMode('signin'); });
+    pr.catch(function(err){ er[1](err.message); }).finally(function(){ bz[1](false); });
+  }
+  return html`<div class="login-wrap"><div class="login-card">
+    <h1 style="margin-bottom:4px">Digitalization Program Cockpit</h1>
+    <p class="muted small" style="margin-top:0">Governance preparation & portfolio steering</p>
+    <form onSubmit=${submit}>
+      ${mode === 'signup' && html`<div class="field"><label>Name</label><input type="text" value=${nm[0]} onInput=${function(e){nm[1](e.target.value)}} required /></div>`}
+      <div class="field"><label>Email</label><input type="email" value=${em[0]} onInput=${function(e){em[1](e.target.value)}} required /></div>
+      <div class="field"><label>Password</label><input type="password" value=${pw[0]} onInput=${function(e){pw[1](e.target.value)}} required /></div>
+      ${er[0] && html`<p style="color:var(--red);font-size:13px">${er[0]}</p>`}
+      ${inf[0] && html`<p style="color:var(--green);font-size:13px">${inf[0]}</p>`}
+      <button class="btn" disabled=${bz[0]} style="width:100%">${mode === 'signin' ? 'Sign in' : 'Create account'}</button>
+    </form>
+    <p class="small" style="text-align:center">
+      ${mode === 'signin'
+        ? html`No account? <a onClick=${function(){setMode('signup')}}>Sign up</a>`
+        : html`Have an account? <a onClick=${function(){setMode('signin')}}>Sign in</a>`}
+    </p>
+  </div></div>`;
+}
+
+/* ================= Idea form ================= */
+function IdeaForm(p) {
+  var st = useState({ title:'', opportunity:'', business_benefits:'', digital_pillar:'', impacted_functions:[],
+    expected_value_types:[], estimated_value:'', urgency:'', risks_challenges:'', interface_systems:'',
+    e3_environment:false, e3_economy:false, e3_engagement:false });
+  var f = st[0]; function set(k,v){ st[1](function(s){ var n = Object.assign({},s); n[k]=v; return n; }); }
+  var er = useState(null), bz = useState(false);
+  function submit(e) {
+    e.preventDefault();
+    if (!f.e3_environment && !f.e3_economy && !f.e3_engagement && !f.expected_value_types.length) {
+      er[1]('Please select at least one expected impact area (E3) or value type.'); return;
+    }
+    bz[1](true); er[1](null);
+    api.createIdea(Object.assign({}, f, { digital_pillar:f.digital_pillar||null, urgency:f.urgency||null,
+      requester_id:p.profile.id, stage:'L0 Submitted' }))
+      .then(function(idea){ nav('/ideas/'+idea.id); })
+      .catch(function(err){ er[1](err.message); bz[1](false); });
+  }
+  return html`<div style="max-width:760px">
+    <div class="topbar"><h1>Submit a Digitalization Idea</h1></div>
+    <p class="small muted" style="margin-top:-8px">Takes ~5 minutes. Short answers and estimates are fine — write "To be confirmed" when you don't know. You'll be notified at every step after submission.</p>
+    <${RoadmapNote} />
+    <form class="card" onSubmit=${submit}>
+      <${Field} label="Title *"><input type="text" required value=${f.title} onInput=${function(e){set('title',e.target.value)}} placeholder="Short, descriptive title" /><//>
+      <${Field} label="Problem / Opportunity *" hint="What problem are you trying to address? How is the work done today?">
+        <textarea required value=${f.opportunity} onInput=${function(e){set('opportunity',e.target.value)}}></textarea><//>
+      <${Field} label="Expected Business Benefits *" hint="What would a better future state look like?">
+        <textarea required value=${f.business_benefits} onInput=${function(e){set('business_benefits',e.target.value)}}></textarea><//>
+      <${Field} label="E3 Impact Areas" hint="At least one impact area or value type required">
+        <div class="checks">
+          <label><input type="checkbox" checked=${f.e3_environment} onChange=${function(e){set('e3_environment',e.target.checked)}} /> Environment</label>
+          <label><input type="checkbox" checked=${f.e3_economy} onChange=${function(e){set('e3_economy',e.target.checked)}} /> Economy</label>
+          <label><input type="checkbox" checked=${f.e3_engagement} onChange=${function(e){set('e3_engagement',e.target.checked)}} /> Engagement</label>
+        </div><//>
+      <${Field} label="Expected Value Types"><${MultiCheck} options=${VALUE_TYPES} value=${f.expected_value_types} onChange=${function(v){set('expected_value_types',v)}} /><//>
+      <div class="grid cols-2">
+        <${Field} label="Digital Pillar" hint="Leave empty if unsure">
+          <select value=${f.digital_pillar} onChange=${function(e){set('digital_pillar',e.target.value)}}>
+            <option value="">— Not sure —</option>${PILLARS.map(function(pl){return html`<option key=${pl}>${pl}</option>`})}
+          </select><//>
+        <${Field} label="Urgency">
+          <select value=${f.urgency} onChange=${function(e){set('urgency',e.target.value)}}>
+            <option value="">—</option>${URGENCY.map(function(u){return html`<option key=${u}>${u}</option>`})}
+          </select><//>
+      </div>
+      <${Field} label="Which functions / teams would benefit?"><${MultiCheck} options=${FUNCTIONS} value=${f.impacted_functions} onChange=${function(v){set('impacted_functions',v)}} /><//>
+      <${Field} label="Estimated Value" hint="Rough estimate, free text"><input type="text" value=${f.estimated_value} onInput=${function(e){set('estimated_value',e.target.value)}} placeholder="e.g. 50 hours/month saved, 20 k€/year" /><//>
+      <${Field} label="Systems / Data / Tools Involved"><input type="text" value=${f.interface_systems} onInput=${function(e){set('interface_systems',e.target.value)}} placeholder="SAP, Teamcenter, MES, BEDM, Synergy…" /><//>
+      <${Field} label="Known Risks, Blockers or Constraints"><textarea value=${f.risks_challenges} onInput=${function(e){set('risks_challenges',e.target.value)}}></textarea><//>
+      ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+      <button class="btn" disabled=${bz[0]}>Submit idea</button>
+    </form>
+  </div>`;
+}
+
+/* ================= Ideation Board ================= */
+
+function HelpGuide() {
+  var dk = 'cockpit_help_dismissed';
+  var dm = useState(function(){ try { return localStorage.getItem(dk) === '1'; } catch(e) { return false; } }());
+  function dismiss(){ try { localStorage.setItem(dk, '1'); } catch(e){} dm[1](true); }
+  function reopen(){ try { localStorage.removeItem(dk); } catch(e){} dm[1](false); }
+  if (dm[0]) return html`<p class="small no-print" style="margin-top:-6px"><a onClick=${reopen}>❓ How does the idea process work?</a></p>`;
+  var steps = [
+    ['💡', 'Submit your idea', 'Takes about 5 minutes. Plain language, no jargon needed — describe the problem, who it affects and the benefit you expect. Estimates and "to be confirmed" are fine.'],
+    ['🔍', 'We triage it', 'The Transformation Team checks scope, duplicates and fit within a few days. You are notified at every step.'],
+    ['🧰', 'You complete your kit', 'If your idea is qualified, you get edit access to a guided Business Case and Project Charter (~15 minutes each). They are pre-filled from your submission.'],
+    ['⚖️', 'A committee decides', 'Your initiative is presented at the right SteerCo with your documents. Outcome: Go, Rework, Hold or No-Go — always with a reason.'],
+    ['🚀', 'It becomes a project', 'Approved ideas are converted into official projects. Follow the status of your idea on this board and in your notifications at any time.'] ];
+  return html`<div class="card no-print" style="border-left:4px solid var(--accent)">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <h2>❓ How it works — from your idea to a project</h2>
+      <button class="btn secondary small" onClick=${dismiss}>Got it, hide</button>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">
+      ${steps.map(function(s, i) {
+        return html`<div key=${i} style="background:#f7f8fb;border-radius:8px;padding:10px">
+          <div style="font-size:20px">${s[0]} <b style="font-size:13px">${i + 1}. ${s[1]}</b></div>
+          <div class="small muted" style="margin-top:4px">${s[2]}</div>
+        </div>`; })}
+    </div>
+  </div>`;
+}
+
+function IdeationBoard(p) {
+  var ideas = useAsync(api.listIdeas, []);
+  var vw = useState('kanban'), view = vw[0];
+  var fl = useState({pillar:'',stage:'',committee:'',flag:'',q:''});
+  var flt = fl[0]; function setF(k,v){ fl[1](function(s){ var n=Object.assign({},s); n[k]=v; return n; }); }
+  var tp = useState(null);
+  var filtered = useMemo(function(){
+    return (ideas.data||[]).filter(function(i){
+      return (!flt.pillar || i.digital_pillar === flt.pillar) &&
+        (!flt.stage || i.stage === flt.stage) &&
+        (!flt.committee || i.committee_target === flt.committee) &&
+        (!flt.flag || (flt.flag==='quick_win'&&i.quick_win) || (flt.flag==='priority'&&i.priority) || (flt.flag==='overdue'&&triageOverdue(i))) &&
+        (!flt.q || (i.title+' '+i.idea_id).toLowerCase().indexOf(flt.q.toLowerCase()) >= 0);
+    });
+  }, [ideas.data, flt]);
+  if (ideas.loading) return html`<p>Loading…</p>`;
+  if (ideas.error) return html`<p style="color:var(--red)">${ideas.error.message}</p>`;
+
+  function KCard(props) {
+    var i = props.i;
+    return html`<div class="kcard" onClick=${function(){nav('/ideas/'+i.id)}}>
+      <span class="muted small">${i.idea_id}</span>
+      <div class="title">${i.title}</div>
+      <div class="meta">
+        ${i.digital_pillar && html`<${Badge} color="blue">${i.digital_pillar}<//>`}
+        ${i.quick_win && html`<${Badge} color="green">Quick win<//>`}
+        ${i.priority && html`<${Badge} color="red">Priority<//>`}
+        ${triageOverdue(i) && html`<${Badge} color="amber">⏰ ${daysInTriage(i)}d in triage<//>`}
+      </div>
+      <div class="small muted" style="margin-top:6px">${i.owner && i.owner.name ? 'Owner: '+i.owner.name : 'No owner'} · ${fmtDate(i.updated_at)}</div>
+    </div>`;
+  }
+
+  return html`<div>
+    <div class="topbar"><h1>Ideation Board</h1><${A} href="/ideas/new" class="btn">+ Submit idea<//></div>
+    <${HelpGuide} />
+    <${RoadmapNote} />
+    <div class="filters">
+      <input placeholder="Search…" value=${flt.q} onInput=${function(e){setF('q',e.target.value)}} />
+      <select value=${flt.stage} onChange=${function(e){setF('stage',e.target.value)}}><option value="">All stages</option>${STAGES.map(function(s){return html`<option key=${s}>${s}</option>`})}</select>
+      <select value=${flt.pillar} onChange=${function(e){setF('pillar',e.target.value)}}><option value="">All pillars</option>${PILLARS.map(function(s){return html`<option key=${s}>${s}</option>`})}</select>
+      <select value=${flt.committee} onChange=${function(e){setF('committee',e.target.value)}}><option value="">All committees</option>${COMMITTEES.map(function(s){return html`<option key=${s}>${s}</option>`})}</select>
+      <select value=${flt.flag} onChange=${function(e){setF('flag',e.target.value)}}>
+        <option value="">All flags</option><option value="quick_win">Quick wins</option>
+        <option value="priority">Priorities</option><option value="overdue">Triage overdue</option>
+      </select>
+      <div class="tabs" style="border:none;margin-bottom:0;margin-left:auto">
+        ${['kanban','table','bubble','archive'].map(function(v){
+          return html`<button key=${v} class=${view===v?'active':''} onClick=${function(){vw[1](v)}}>${v[0].toUpperCase()+v.slice(1)}</button>`; })}
+      </div>
+    </div>
+    ${view === 'kanban' && html`<div class="kanban">
+      ${ACTIVE_STAGES.concat(['Converted']).map(function(stage){
+        var items = filtered.filter(function(i){return i.stage===stage});
+        return html`<div class="col" key=${stage}><h3>${stage} <span>${items.length}</span></h3>
+          ${items.map(function(i){return html`<${KCard} key=${i.id} i=${i} />`})}</div>`; })}
+    </div>`}
+    ${view === 'table' && html`<div class="card" style="overflow-x:auto"><table class="data">
+      <thead><tr><th>ID</th><th>Title</th><th>Stage</th><th>Pillar</th><th>Requester</th><th>Owner</th><th>Flags</th><th>Committee</th><th>Updated</th></tr></thead>
+      <tbody>${filtered.map(function(i){
+        return html`<tr key=${i.id}>
+          <td><${A} href=${'/ideas/'+i.id}>${i.idea_id}<//></td>
+          <td><${A} href=${'/ideas/'+i.id}>${i.title}<//></td>
+          <td><${StageBadge} stage=${i.stage} /></td>
+          <td>${i.digital_pillar||'—'}</td><td>${i.requester&&i.requester.name}</td><td>${(i.owner&&i.owner.name)||'—'}</td>
+          <td>${i.quick_win&&html`<${Badge} color="green">QW<//> `}${i.priority&&html`<${Badge} color="red">P<//> `}${triageOverdue(i)&&html`<${Badge} color="amber">⏰<//>`}</td>
+          <td>${i.committee_target||'—'}</td><td>${fmtDate(i.updated_at)}</td></tr>`; })}
+      ${!filtered.length && html`<tr><td colSpan="9" class="muted">No ideas match the filters.</td></tr>`}
+      </tbody></table></div>`}
+    ${view === 'archive' && html`<div class="card" style="overflow-x:auto">
+      <h2>Archive — rejected & on-hold ideas</h2>
+      <table class="data">
+        <thead><tr><th>ID</th><th>Title</th><th>Stage</th><th>Pillar</th><th>Requester</th><th>Reason</th><th>Updated</th></tr></thead>
+        <tbody>${(ideas.data||[]).filter(function(i){return i.stage==='Rejected'||i.stage==='Hold'}).map(function(i){
+          return html`<tr key=${i.id}>
+            <td><${A} href=${'/ideas/'+i.id}>${i.idea_id}<//></td>
+            <td><${A} href=${'/ideas/'+i.id}>${i.title}<//></td>
+            <td><${StageBadge} stage=${i.stage} /></td>
+            <td>${i.digital_pillar||'—'}</td>
+            <td>${i.requester&&i.requester.name}</td>
+            <td class="small">${i.status_reason||'—'}</td>
+            <td>${fmtDate(i.updated_at)}</td></tr>`; })}
+        ${!(ideas.data||[]).some(function(i){return i.stage==='Rejected'||i.stage==='Hold'}) && html`<tr><td colSpan="7" class="muted">No rejected or on-hold ideas.</td></tr>`}
+        </tbody></table>
+    </div>`}
+    ${view === 'bubble' && html`<div class="card bubble-wrap">
+      <h2>Impact vs Complexity</h2>
+      <p class="muted small">X: complexity (effort assessment) · Y: impact (urgency, value signals) · green = quick win, red = priority</p>
+      <${BubbleChart} ideas=${filtered.filter(function(i){return ACTIVE_STAGES.indexOf(i.stage)>=0})} tip=${tp[0]} setTip=${tp[1]} />
+    </div>`}
+  </div>`;
+}
+function BubbleChart(p) {
+  var W = 800, H = 420, pad = 45;
+  var pts = p.ideas.map(function(i){ return { i:i, x:(complexityScore(i)!==null?complexityScore(i):1.5), y:impactScore(i) }; });
+  var maxY = Math.max.apply(null, [5].concat(pts.map(function(q){return q.y})));
+  function sx(v){ return pad + ((v-1)/2) * (W-2*pad); }
+  function sy(v){ return H - pad - (v/maxY) * (H-2*pad); }
+  return html`<div>
+    ${p.tip && html`<div class="bubble-tip" style="left:${p.tip.px+12}px;top:${p.tip.py-10}px">${p.tip.label}</div>`}
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:460px" onMouseLeave=${function(){p.setTip(null)}}>
+      <line x1=${pad} y1=${H-pad} x2=${W-pad} y2=${H-pad} stroke="#c8cdd8" />
+      <line x1=${pad} y1=${pad} x2=${pad} y2=${H-pad} stroke="#c8cdd8" />
+      <text x=${W/2} y=${H-10} text-anchor="middle" font-size="12" fill="#66708a">Complexity →</text>
+      <text x="14" y=${H/2} text-anchor="middle" font-size="12" fill="#66708a" transform="rotate(-90 14 ${H/2})">Impact →</text>
+      ${['Low','Medium','High'].map(function(l,k){ return html`<text key=${l} x=${sx(k+1)} y=${H-pad+16} text-anchor="middle" font-size="11" fill="#8892ab">${l}</text>`; })}
+      <rect x=${pad} y=${pad} width=${(W-2*pad)/2} height=${(H-2*pad)/2} fill="#1a8f4d" opacity="0.05" />
+      <text x=${pad+8} y=${pad+16} font-size="11" fill="#1a8f4d">Quick-win zone</text>
+      ${pts.map(function(q,k){
+        var i = q.i;
+        return html`<circle key=${k} cx=${sx(q.x)} cy=${sy(q.y)} r=${i.priority?14:10}
+          fill=${i.quick_win?'var(--green)':i.priority?'var(--red)':'var(--accent)'} opacity="0.75" style="cursor:pointer"
+          onClick=${function(){nav('/ideas/'+i.id)}}
+          onMouseEnter=${function(e){p.setTip({px:e.offsetX, py:e.offsetY, label:i.idea_id+' — '+i.title})}} />`; })}
+    </svg></div>`;
+}
+
+/* ================= Idea Detail ================= */
+function Info(p) {
+  return html`<div style="margin-bottom:10px">
+    <div class="small muted" style="font-weight:600">${p.label}</div>
+    <div style=${p.multiline?'white-space:pre-wrap':''}>${p.value}</div></div>`;
+}
+function IdeaDetail(p) {
+  var id = p.id, auth = p.auth;
+  var idea = useAsync(function(){return api.getIdea(id)}, [id]);
+  var bc = useAsync(function(){return api.getBCByIdea(id)}, [id]);
+  var ch = useAsync(function(){return api.getCharterByIdea(id)}, [id]);
+  var activity = useAsync(function(){return api.listActivity('Idea', id)}, [id]);
+  var decisions = useAsync(api.listDecisions, [id]);
+  var md = useState(null), modal = md[0], setModal = md[1];
+  var cm = useState(''), bz = useState(false), er = useState(null);
+
+  if (idea.loading) return html`<p>Loading…</p>`;
+  if (idea.error) return html`<p style="color:var(--red)">${idea.error.message}</p>`;
+  var i = idea.data;
+  var isPMTT = auth.isPMTT, isPM = auth.isPM;
+  var ideaDecisions = (decisions.data||[]).filter(function(d){return d.related_id === i.idea_id});
+  var bcReady = !!(bc.data && bcCompletenessLean(bc.data).pct >= GATE_READY_PCT);
+  var chReady = !!(ch.data && chCompletenessLean(ch.data).pct >= GATE_READY_PCT);
+  var docsReady = bcReady && chReady;
+
+  function reloadAll(){ idea.reload(); bc.reload(); ch.reload(); activity.reload(); decisions.reload(); }
+  function save(fields) {
+    bz[1](true); er[1](null);
+    return api.updateIdea(i.id, fields).then(function(){ idea.reload(); })
+      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+  }
+  function doQualify() {
+    bz[1](true); er[1](null);
+    api.qualifyIdea(i.id).then(function(){ setModal(null); reloadAll(); })
+      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+  }
+  function moveStage(stage){ save({stage:stage}).then(function(){ setModal(null); activity.reload(); }); }
+  function postComment() {
+    if (!cm[0].trim()) return;
+    api.addComment('Idea', i.id, auth.profile.id, cm[0].trim()).then(function(){ cm[1](''); activity.reload(); });
+  }
+
+  return html`<div>
+    <div class="topbar">
+      <div>
+        <span class="muted small">${i.idea_id} · submitted ${fmtDate(i.submitted_date)} by ${i.requester&&i.requester.name}</span>
+        <h1>${i.title}</h1>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+          <${StageBadge} stage=${i.stage} />
+          ${i.digital_pillar && html`<${Badge} color="blue">${i.digital_pillar}<//>`}
+          ${i.quick_win && html`<${Badge} color="green">Quick win<//>`}
+          ${i.priority && html`<${Badge} color="red">Priority<//>`}
+          ${i.committee_target && html`<${Badge} color="purple">${i.committee_target}<//>`}
+          ${i.linked_project_id && html`<${Badge} color="green">→ ${i.linked_project_id}<//>`}
+        </div>
+      </div>
+      ${isPMTT && html`<div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${i.stage==='L0 Submitted' && html`<button class="btn" onClick=${function(){moveStage('L0 Triage')}}>Start triage</button>`}
+        ${i.stage==='L0 Triage' && html`<button class="btn" onClick=${function(){setModal('qualify')}}>Qualify → L1</button>`}
+        ${i.stage==='L1 Qualified' && html`<button class="btn" onClick=${function(){setModal('l2')}}>Move → L2 Preparation</button>`}
+        ${i.stage==='L2 BC/Charter' && html`<button class="btn" onClick=${function(){setModal('g1')}}>Ready → G1 Approval</button>`}
+        ${i.stage==='G1 Approval' && isPM && html`<button class="btn" onClick=${function(){setModal('convert')}}>Convert → Project</button>`}
+        ${['Rejected','Converted'].indexOf(i.stage)<0 && html`
+          <button class="btn secondary" onClick=${function(){setModal('hold')}}>Hold</button>
+          <button class="btn danger" onClick=${function(){setModal('reject')}}>Reject</button>`}
+        ${i.stage==='Hold' && html`<button class="btn secondary" onClick=${function(){moveStage('L0 Triage')}}>Reopen</button>`}
+      </div>`}
+    </div>
+    ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+    <div class="grid cols-2">
+      <div>
+        <div class="card">
+          <h2>Original Submission</h2>
+          <${Info} label="Problem / Opportunity" value=${i.opportunity} multiline=${true} />
+          <${Info} label="Business Benefits" value=${i.business_benefits} multiline=${true} />
+          <${Info} label="E3 Impact" value=${[i.e3_environment&&'Environment',i.e3_economy&&'Economy',i.e3_engagement&&'Engagement'].filter(Boolean).join(', ')||'—'} />
+          <${Info} label="Value Types" value=${(i.expected_value_types||[]).join(', ')||'—'} />
+          <${Info} label="Impacted Functions" value=${(i.impacted_functions||[]).join(', ')||'—'} />
+          <${Info} label="Estimated Value" value=${i.estimated_value||'—'} />
+          <${Info} label="Systems Involved" value=${i.interface_systems||'—'} />
+          <${Info} label="Risks / Constraints" value=${i.risks_challenges||'—'} multiline=${true} />
+        </div>
+        <div class="card">
+          <h2>Governance Documents</h2>
+          ${bc.data ? html`<p>📄 <${A} href=${'/ideas/'+i.id+'/business-case'}>Business Case ${bc.data.business_case_id} (${bc.data.version})<//> — <${Badge} color=${bc.data.status==='Ready for Gate'?'green':'gray'}>${bc.data.status}<//> <${Badge} color=${bcReady?'green':'amber'}>${bcReady?'Gate ready':bcCompletenessLean(bc.data).pct + '%'}<//></p>`
+            : html`<p class="muted">Business Case v0 will be created automatically at L1 qualification.</p>`}
+          ${ch.data ? html`<p>📄 <${A} href=${'/ideas/'+i.id+'/charter'}>Project Charter ${ch.data.charter_id} (${ch.data.version})<//> — <${Badge} color=${ch.data.status==='Ready for Gate'?'green':'gray'}>${ch.data.status}<//> <${Badge} color=${chReady?'green':'amber'}>${chReady?'Gate ready':chCompletenessLean(ch.data).pct + '%'}<//></p>`
+            : html`<p class="muted">Project Charter v0 will be created automatically at L1 qualification.</p>`}
+        </div>
+        <div class="card">
+          <h2>Decisions</h2>
+          ${ideaDecisions.length ? ideaDecisions.map(function(d){
+            return html`<div key=${d.id} class="alert-line">
+              <${Badge} color=${d.status==='Decided'?'green':d.status==='Escalated'?'red':'amber'}>${d.status}<//>
+              <span>${d.title}</span>
+              <span class="muted small">${d.committee_target}${d.due_date?' · due '+fmtDate(d.due_date):''}${d.outcome?' · '+d.outcome:''}</span></div>`;
+          }) : html`<p class="muted">No decisions linked yet.</p>`}
+          ${isPMTT && html`<p><${A} href="/decisions" class="small">Manage in Decision Log →<//></p>`}
+        </div>
+      </div>
+      <div>
+        ${isPMTT && i.stage === 'G1 Approval' && html`<${GateBox} i=${i} bc=${bc.data} ch=${ch.data} auth=${auth}
+          onDone=${function(){ reloadAll(); }} />`}
+        ${isPMTT && html`<${TriagePanel} i=${i} save=${save} busy=${bz[0]} />`}
+        <div class="card">
+          <h2>Comments & Activity</h2>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <input type="text" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:7px"
+              placeholder="Add a comment…" value=${cm[0]} onInput=${function(e){cm[1](e.target.value)}}
+              onKeyDown=${function(e){ if (e.key==='Enter') postComment(); }} />
+            <button class="btn small" onClick=${postComment}>Post</button>
+          </div>
+          ${(activity.data||[]).map(function(a){
+            return html`<div key=${a.id} class="activity-item">
+              <span class="who">${(a.user&&a.user.name)||'System'}</span> ${a.kind==='comment'?'💬':'⚙️'} ${a.message}
+              <div class="when">${fmtDateTime(a.created_at)}</div></div>`; })}
+        </div>
+      </div>
+    </div>
+    ${modal==='qualify' && html`<${Modal} title="Qualify idea → L1" onClose=${function(){setModal(null)}}>
+      <p class="small muted">L0 → L1 criteria (spec §6). Qualifying automatically creates Business Case v0, Project Charter v0 and the initial decision record.</p>
+      <${Checklist} items=${l1Criteria(i)} />
+      ${!i.owner_id && html`<p class="small" style="color:var(--amber)">Tip: assign an owner in the triage panel first.</p>`}
+      ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+      <button class="btn" onClick=${doQualify} disabled=${bz[0]}>Confirm qualification</button><//>`}
+    ${modal==='l2' && html`<${Modal} title="Move to L2 — BC / Charter preparation" onClose=${function(){setModal(null)}}>
+      <${Checklist} items=${l2Criteria(i)} />
+      <p class="small muted">The Transformation Team confirms there is enough substance to prepare governance materials.</p>
+      <button class="btn" onClick=${function(){moveStage('L2 BC/Charter')}} disabled=${bz[0]}>Confirm move to L2</button><//>`}
+    ${modal==='g1' && html`<${Modal} title="Ready for G1 Approval" onClose=${function(){setModal(null)}}>
+      <${Checklist} items=${g1Criteria(i, bc.data, ch.data)} />
+      ${!docsReady && html`<p class="small" style="color:var(--red)">⛔ The Business Case and the Project Charter are mandatory deliverables for G1. Both must be gate-ready (${GATE_READY_PCT}% of required items) before the initiative can be sent to the committee.
+        ${!bcReady && html`<br />→ <${A} href=${'/ideas/'+i.id+'/business-case'}>Complete the Business Case<//>`}
+        ${!chReady && html`<br />→ <${A} href=${'/ideas/'+i.id+'/charter'}>Complete the Project Charter<//>`}</p>`}
+      <p class="small muted">Log the G1 decision in the Decision Log for the target committee.</p>
+      <button class="btn" onClick=${function(){moveStage('G1 Approval')}} disabled=${bz[0]||!docsReady}>Confirm — send to G1</button><//>`}
+    ${(modal==='reject'||modal==='hold') && html`<${ReasonModal} i=${i} kind=${modal} auth=${auth}
+      onClose=${function(){setModal(null)}} onDone=${function(){setModal(null); idea.reload(); activity.reload();}} />`}
+    ${modal==='convert' && html`<${ConvertModal} i=${i} decisions=${decisions.data||[]}
+      onClose=${function(){setModal(null)}} onDone=${function(){setModal(null); reloadAll();}} />`}
+  </div>`;
+}
+
+function GateBox(p) {
+  var i = p.i, criteria = g1Criteria(i, p.bc, p.ch);
+  var missing = criteria.filter(function(x){return !x.ok});
+  var cm = useState(i.committee_target || 'Pillar SteerCo');
+  var note = useState('');
+  var bz = useState(false), er = useState(null);
+  function decide(outcome) {
+    bz[1](true); er[1](null);
+    api.createDecision({
+      title: 'G1 gate decision: ' + i.idea_id + ' - ' + i.title,
+      related_type: 'Idea', related_id: i.idea_id,
+      committee_target: cm[0], status: 'Decided', outcome: outcome,
+      decision_date: new Date().toISOString().slice(0,10),
+      decision_notes: note[0] || null, owner_id: p.auth.profile.id
+    }).then(function() {
+      var next = outcome === 'No-Go' ? 'Rejected' : outcome === 'Hold' ? 'Hold'
+        : outcome === 'Rework' ? 'L2 BC/Charter' : null;
+      return next ? api.updateIdea(i.id, { stage: next }) : null;
+    }).then(function(){ p.onDone(); })
+      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+  }
+  return html`<div class="card" style="border-left:4px solid var(--purple)">
+    <h2>⚖️ G1 Gate decision — ${cm[0]}</h2>
+    ${missing.length
+      ? html`<p class="small" style="color:var(--amber)">Readiness gaps (${missing.length}): ${missing.map(function(x){return x.label}).join(' · ')}</p>`
+      : html`<p class="small" style="color:var(--green)">✅ All readiness criteria met.</p>`}
+    <div class="grid cols-2">
+      <${Field} label="Committee">
+        <select value=${cm[0]} onChange=${function(e){cm[1](e.target.value)}}>
+          ${COMMITTEES.map(function(x){return html`<option key=${x}>${x}</option>`})}
+        </select><//>
+      <${Field} label="Decision note"><input type="text" value=${note[0]} onInput=${function(e){note[1](e.target.value)}} placeholder="Committee rationale…" /><//>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" style="background:var(--green)" disabled=${bz[0]} onClick=${function(){decide('Go')}}>Go</button>
+      <button class="btn danger" disabled=${bz[0]} onClick=${function(){decide('No-Go')}}>No-Go</button>
+      <button class="btn secondary" disabled=${bz[0]} onClick=${function(){decide('Rework')}}>Rework → L2</button>
+      <button class="btn secondary" disabled=${bz[0]} onClick=${function(){decide('Hold')}}>Hold</button>
+    </div>
+    <p class="small muted" style="margin-bottom:0">Logs the committee decision in the Decision Log and applies the outcome. After a Go, use "Convert → Project".</p>
+    ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+  </div>`;
+}
+
+function TriagePanel(p) {
+  var i = p.i;
+  var st = useState({ digital_pillar:i.digital_pillar||'', urgency:i.urgency||'', data_availability:i.data_availability||'',
+    resources_effort:i.resources_effort||'', cost_effort:i.cost_effort||'', change_effort:i.change_effort||'',
+    technical_effort:i.technical_effort||'', provisional_sponsor:i.provisional_sponsor||'', committee_target:i.committee_target||'',
+    quick_win:i.quick_win, priority:i.priority, triage_notes:i.triage_notes||'',
+    impacted_functions:i.impacted_functions||[], expected_value_types:i.expected_value_types||[], owner_id:i.owner_id||'' });
+  var f = st[0]; function set(k,v){ st[1](function(s){ var n=Object.assign({},s); n[k]=v; return n; }); }
+  var profiles = useAsync(api.listProfiles, []);
+  function sel(label,key,opts) {
+    return html`<${Field} label=${label}>
+      <select value=${f[key]} onChange=${function(e){set(key,e.target.value)}}>
+        <option value="">—</option>${opts.map(function(o){return html`<option key=${o}>${o}</option>`})}
+      </select><//>`;
+  }
+  var merged = Object.assign({}, i, f);
+  return html`<div class="card">
+    <h2>Triage & Assessment</h2>
+    <div class="grid cols-2">
+      ${sel('Digital Pillar','digital_pillar',PILLARS)}
+      <${Field} label="Owner (next-step assessment)">
+        <select value=${f.owner_id} onChange=${function(e){set('owner_id',e.target.value)}}>
+          <option value="">—</option>
+          ${(profiles.data||[]).filter(function(pr){return pr.role!=='requester'}).map(function(pr){
+            return html`<option key=${pr.id} value=${pr.id}>${pr.name}</option>`})}
+        </select><//>
+      ${sel('Urgency','urgency',URGENCY)}
+      ${sel('Data Availability','data_availability',DATA_AVAILABILITY)}
+      ${sel('Resources Effort','resources_effort',EFFORT)}
+      ${sel('Cost Effort','cost_effort',EFFORT)}
+      ${sel('Change Effort','change_effort',EFFORT)}
+      ${sel('Technical Effort','technical_effort',EFFORT)}
+      ${sel('Committee Target','committee_target',COMMITTEES)}
+      <${Field} label="Provisional Sponsor"><input type="text" value=${f.provisional_sponsor} onInput=${function(e){set('provisional_sponsor',e.target.value)}} /><//>
+    </div>
+    <${Field} label="Impacted Functions"><${MultiCheck} options=${FUNCTIONS} value=${f.impacted_functions} onChange=${function(v){set('impacted_functions',v)}} /><//>
+    <${Field} label="Value Types"><${MultiCheck} options=${VALUE_TYPES} value=${f.expected_value_types} onChange=${function(v){set('expected_value_types',v)}} /><//>
+    <div class="checks" style="margin-bottom:10px">
+      <label><input type="checkbox" checked=${f.quick_win} onChange=${function(e){set('quick_win',e.target.checked)}} /> Quick win ${suggestQuickWin(merged)&&!f.quick_win&&html`<${Badge} color="green">suggested<//>`}</label>
+      <label><input type="checkbox" checked=${f.priority} onChange=${function(e){set('priority',e.target.checked)}} /> Priority ${suggestPriority(merged)&&!f.priority&&html`<${Badge} color="red">suggested<//>`}</label>
+    </div>
+    <${Field} label="Triage Notes" hint="duplicate check, scope fit, pillar rationale">
+      <textarea value=${f.triage_notes} onInput=${function(e){set('triage_notes',e.target.value)}}></textarea><//>
+    <button class="btn" disabled=${p.busy} onClick=${function(){
+      p.save({ digital_pillar:f.digital_pillar||null, urgency:f.urgency||null, data_availability:f.data_availability||null,
+        resources_effort:f.resources_effort||null, cost_effort:f.cost_effort||null, change_effort:f.change_effort||null,
+        technical_effort:f.technical_effort||null, committee_target:f.committee_target||null, owner_id:f.owner_id||null,
+        provisional_sponsor:f.provisional_sponsor, quick_win:f.quick_win, priority:f.priority, triage_notes:f.triage_notes,
+        impacted_functions:f.impacted_functions, expected_value_types:f.expected_value_types });
+    }}>Save assessment</button>
+  </div>`;
+}
+
+function ReasonModal(p) {
+  var rs = useState(''), er = useState(null), bz = useState(false);
+  var isReject = p.kind === 'reject';
+  var target = isReject ? 'Rejected' : 'Hold';
+  function confirm() {
+    if (!rs[0].trim()) { er[1]('A reason is required.'); return; }
+    bz[1](true); er[1](null);
+    api.updateIdea(p.i.id, { stage: target, status_reason: rs[0].trim() })
+      .then(function(){ return api.addComment('Idea', p.i.id, p.auth.profile.id,
+        (isReject ? 'Rejected: ' : 'Put on hold: ') + rs[0].trim()); })
+      .then(function(){ p.onDone(); })
+      .catch(function(e){ er[1](e.message); bz[1](false); });
+  }
+  return html`<${Modal} title=${(isReject ? 'Reject ' : 'Put on hold ') + p.i.idea_id} onClose=${p.onClose}>
+    <${Field} label="Reason *" hint="recorded in the idea history — required for governance traceability">
+      <textarea value=${rs[0]} onInput=${function(e){rs[1](e.target.value)}} placeholder=${isReject ? 'Why is this idea rejected? Out of scope, duplicate, no value…' : 'Why on hold? Waiting for budget, dependency, sponsor…'}></textarea><//>
+    ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+    <button class=${isReject ? 'btn danger' : 'btn'} disabled=${bz[0]} onClick=${confirm}>${isReject ? 'Confirm rejection' : 'Confirm hold'}</button><//>`;
+}
+
+function ConvertModal(p) {
+  var pid = useState(''), lead = useState(''), er = useState(null), bz = useState(false);
+  var criteria = conversionCriteria(p.i, p.decisions);
+  function convert() {
+    bz[1](true); er[1](null);
+    api.convertToProject(p.i.id, pid[0].trim(), lead[0].trim()).then(p.onDone)
+      .catch(function(e){ er[1](e.message); bz[1](false); });
+  }
+  return html`<${Modal} title="Convert initiative to project (G1 → S1)" onClose=${p.onClose}>
+    <${Checklist} items=${criteria} />
+    <${Field} label="SmartSheet Project ID *" hint="e.g. PRJ-026 — duplicates are rejected">
+      <input type="text" value=${pid[0]} onInput=${function(e){pid[1](e.target.value)}} /><//>
+    <${Field} label="Project Lead *"><input type="text" value=${lead[0]} onInput=${function(e){lead[1](e.target.value)}} /><//>
+    <p class="small muted">Creates the project record (stage S1 Scoping), links the initiative ID, and keeps the idea traceable. Export it to SmartSheet from the SmartSheet I/O screen.</p>
+    ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+    <button class="btn" disabled=${bz[0]||!pid[0].trim()||!lead[0].trim()} onClick=${convert}>Convert</button><//>`;
+}
+
+/* ================= Lean Doc editors (Business Case & Charter) ================= */
+// Structure from the PWT "Lean Governance Templates" pack (validated 2026-07).
+// Field kinds: text fields live in doc.content (jsonb); 'col:' fields map to table columns.
+var BC_LEAN = {
+  titlePrefix: 'Lean Business Case',
+  guide: 'Target time: 15 minutes. Use short answers and reasonable estimates. If information is unknown, write "To be confirmed" instead of inventing precision.',
+  sections: [
+    { title: '1. Decision and recommendation', guidance: 'Start with the answer. State what you want governance to decide and why this is the preferred path.',
+      fields: [
+        { key:'decision_requested', label:'Decision requested', hint:'the exact decision required from the committee', required:true, ta:true },
+        { key:'col:recommendation', label:'Your recommendation', hint:'Go / No-Go / Rework / Hold', required:true, select:['Go','No-Go','Rework','Hold'] },
+        { key:'why_now', label:'Why now', hint:'urgency, trigger or consequence of waiting', required:true, ta:true },
+        { key:'confidence', label:'Confidence', hint:'High / Medium / Low and the main reason', select:['High','Medium','Low'] },
+        { key:'col:committee_target', label:'Decision forum', select:['Pillar SteerCo','Digitalization SteerCo'] } ] },
+    { title: '2. Problem and proposed solution', guidance: 'Describe the need in plain language. Focus on the user and business problem before the technology.',
+      fields: [
+        { key:'problem', label:'Problem or opportunity', hint:'what is not working or what opportunity is being missed', required:true, ta:true },
+        { key:'who_affected', label:'Who is affected', hint:'teams, users, customers, sites or processes', required:true },
+        { key:'current_way', label:'Current way of working', hint:'how the need is handled today and where the friction occurs', ta:true },
+        { key:'evidence', label:'Evidence or example', hint:'one fact, example, volume or user observation' },
+        { key:'proposed_solution', label:'Proposed solution', hint:'the simplest solution that could address the need', required:true, ta:true },
+        { key:'alternative', label:'Alternative considered', hint:'status quo or another option and why it is less suitable' } ] },
+    { title: '3. Value, cost and success', guidance: 'Ranges are acceptable. Explain the expected benefit and how PWT will know the idea worked.',
+      fields: [
+        { key:'expected_benefits', label:'Expected benefits', hint:'time, quality, cost, safety, compliance, experience or revenue', required:true, ta:true },
+        { key:'estimated_value', label:'Estimated value', hint:'annual value or qualitative impact, with the basis of estimate', required:true },
+        { key:'estimated_cost', label:'Estimated cost', hint:'one-time cost, recurring cost and internal effort range', required:true },
+        { key:'resources_needed', label:'People or resources needed', hint:'key roles, skills or external support' } ],
+      tables: [ { key:'kpis', label:'Success measures', required:true,
+        cols:[ {k:'measure', l:'Success measure'}, {k:'baseline', l:'Current baseline'}, {k:'target', l:'Target'}, {k:'when', l:'When measured'} ] } ] },
+    { title: '4. Feasibility, risks and dependencies', guidance: 'List only the points that could materially affect the recommendation or timing.',
+      fields: [
+        { key:'systems_data', label:'Systems and data needed', hint:'systems, interfaces, data access or architecture needs', required:true },
+        { key:'key_dependency', label:'Key dependency', hint:'team, supplier, decision or related initiative required' },
+        { key:'critical_assumption', label:'Critical assumption', hint:'what must be true for value or feasibility to hold', required:true } ],
+      tables: [ { key:'risks', label:'Main risks', required:true,
+        cols:[ {k:'risk', l:'Main risk'}, {k:'impact', l:'Impact', select:['High','Medium','Low']}, {k:'mitigation', l:'Mitigation or next check'}, {k:'owner', l:'Owner'} ] } ] },
+    { title: '5. Recommendation and approval', guidance: 'Close with the recommendation, remaining questions and the exact decision requested.',
+      fields: [
+        { key:'summary', label:'Recommendation summary', hint:'one paragraph linking need, value, feasibility and risk', required:true, ta:true },
+        { key:'to_confirm', label:'What still needs confirmation', hint:'information to validate before or during the next stage' },
+        { key:'conditions', label:'Proposed conditions', hint:'conditions that should accompany approval' },
+        { key:'decision_wording', label:'Proposed decision wording', hint:'Approve / Rework / Hold / Reject, scope and conditions', required:true } ],
+      approvals: true } ]
+};
+var CH_LEAN = {
+  titlePrefix: 'Lean Project Charter',
+  guide: 'Target time: 10-15 minutes after the idea is qualified. The Requester provides the business content; the Project Manager and Transformation Team confirm delivery details.',
+  sections: [
+    { title: '1. Purpose and success', guidance: 'Define what will be different for the business, for whom and by when.',
+      fields: [
+        { key:'purpose', label:'Project purpose', hint:'one sentence describing why the project exists', required:true },
+        { key:'outcome', label:'Business outcome', hint:'measurable outcome, beneficiary and target date', required:true, ta:true },
+        { key:'problem', label:'Problem being solved', hint:'specific need and current evidence', ta:true },
+        { key:'success_measures', label:'Success measures', hint:'2-3 KPIs with an indicative target', required:true, ta:true },
+        { key:'target_dates', label:'Target start and end', hint:'indicative dates or duration', required:true },
+        { key:'budget_envelope', label:'Budget envelope', hint:'approved or estimated range and constraints' } ] },
+    { title: '2. Scope and deliverables', guidance: 'Make the boundaries explicit. Keep only the deliverables needed to reach the stated outcome.',
+      fields: [
+        { key:'in_scope', label:'In scope', hint:'processes, users, sites, systems and data included', required:true, ta:true },
+        { key:'out_scope', label:'Out of scope', hint:'what is explicitly excluded or deferred', required:true, ta:true },
+        { key:'constraints', label:'Key constraints', hint:'time, budget, policy, architecture or operational constraints' } ],
+      tables: [ { key:'deliverables', label:'Deliverables', required:true,
+        cols:[ {k:'deliverable', l:'Deliverable'}, {k:'acceptance', l:'Acceptance criteria'}, {k:'owner', l:'Owner'}, {k:'target', l:'Target'} ] } ] },
+    { title: '3. Roles and governance', guidance: 'Assign one accountable person for business value and one for delivery. Keep the decision path simple.',
+      fields: [
+        { key:'col:sponsor', label:'Sponsor', hint:'removes major barriers and approves material changes' },
+        { key:'col:business_owner', label:'Requester / Business owner', hint:'owns the need, priorities, acceptance and benefits' },
+        { key:'col:project_lead', label:'Project Manager', hint:'owns planning, coordination, risks and delivery', required:true },
+        { key:'core_contributors', label:'Core contributors', hint:'functions or named people required' },
+        { key:'decision_path', label:'Decision and escalation path', hint:'who decides what, at which forum and when to escalate', required:true },
+        { key:'working_rhythm', label:'Working rhythm', hint:'project check-in and governance review frequency' } ] },
+    { title: '4. Roadmap and gates (indicative)', guidance: 'Use a short outcome-based roadmap. Detailed tasks belong in the project plan; after conversion, official phases live in SmartSheet.',
+      tables: [ { key:'roadmap', label:'Roadmap', 
+        cols:[ {k:'phase', l:'Phase'}, {k:'outcome', l:'Expected outcome'}, {k:'target', l:'Target'}, {k:'gate', l:'Gate', select:['G2','G3','G4','G5']}, {k:'owner', l:'Owner'} ] } ] },
+    { title: '5. Risks and dependencies', guidance: 'Record only the items that need active ownership or could affect the next gate.',
+      tables: [ { key:'risks_deps', label:'Risks & dependencies',
+        cols:[ {k:'item', l:'Item'}, {k:'type', l:'Type', select:['Risk','Dependency']}, {k:'impact_action', l:'Impact and action'}, {k:'owner', l:'Owner'}, {k:'due', l:'Due'}, {k:'status', l:'Status', select:['Open','Closed']} ] } ] },
+    { title: '6. First actions and approval', guidance: 'Agree the immediate actions needed to mobilize, then capture the formal approval or rework request.',
+      tables: [ { key:'first_actions', label:'First actions', required:true,
+        cols:[ {k:'action', l:'First action'}, {k:'owner', l:'Owner'}, {k:'due', l:'Due'}, {k:'evidence', l:'Evidence of completion'} ] } ],
+      approvals: true } ]
+};
+
+function leanVal(doc, f, key) {
+  if (key.indexOf('col:') === 0) return doc[key.slice(4)] || '';
+  return (doc.content && doc.content[key]) || '';
+}
+function leanCompleteness(cfg) {
+  return function(doc) {
+    var missing = [], done = 0, total = 0;
+    cfg.sections.forEach(function(sec) {
+      (sec.fields||[]).forEach(function(fl) {
+        if (!fl.required) return;
+        total++;
+        var v = leanVal(doc, fl, fl.key);
+        if (String(v).trim().length >= 3) done++; else missing.push(fl.label);
+      });
+      (sec.tables||[]).forEach(function(tb) {
+        if (!tb.required) return;
+        total++;
+        var rows = (doc.content && doc.content[tb.key]) || [];
+        var filled = rows.some(function(r){ return Object.keys(r).some(function(k){ return String(r[k]||'').trim().length >= 2; }); });
+        if (filled) done++; else missing.push(tb.label + ' (at least one row)');
+      });
+    });
+    return { done:done, total:total, pct: total ? Math.round(done/total*100) : 0, missing:missing };
+  };
+}
+var bcCompletenessLean = leanCompleteness(BC_LEAN);
+var chCompletenessLean = leanCompleteness(CH_LEAN);
+
+function TableEditor(p) {
+  var rows = p.rows || [];
+  function upd(ri, k, v) {
+    var next = rows.map(function(r, i){ if (i !== ri) return r; var n = Object.assign({}, r); n[k] = v; return n; });
+    p.onChange(next);
+  }
+  function addRow() {
+    var n = {}; p.cols.forEach(function(c){ n[c.k] = ''; });
+    p.onChange(rows.concat([n]));
+  }
+  function delRow(ri) { p.onChange(rows.filter(function(_, i){ return i !== ri; })); }
+  return html`<div style="margin-bottom:12px">
+    <label style="display:block;font-weight:600;font-size:12.5px;margin-bottom:4px">${p.label}${p.required ? ' *' : ''}</label>
+    <div style="overflow-x:auto"><table class="data">
+      <thead><tr>${p.cols.map(function(c){return html`<th key=${c.k}>${c.l}</th>`})}${p.canEdit && html`<th></th>`}</tr></thead>
+      <tbody>
+        ${rows.map(function(r, ri) {
+          return html`<tr key=${ri}>
+            ${p.cols.map(function(c) {
+              return html`<td key=${c.k} style="min-width:110px">
+                ${c.select
+                  ? html`<select value=${r[c.k]||''} onChange=${function(e){upd(ri, c.k, e.target.value)}} disabled=${!p.canEdit}
+                      style="width:100%;padding:5px;border:1px solid var(--border);border-radius:5px">
+                      <option value=""></option>${c.select.map(function(o){return html`<option key=${o}>${o}</option>`})}
+                    </select>`
+                  : html`<input type="text" value=${r[c.k]||''} onInput=${function(e){upd(ri, c.k, e.target.value)}} disabled=${!p.canEdit}
+                      style="width:100%;padding:5px;border:1px solid var(--border);border-radius:5px" />`}
+              </td>`; })}
+            ${p.canEdit && html`<td><button class="btn secondary small" onClick=${function(){delRow(ri)}}>✕</button></td>`}
+          </tr>`; })}
+        ${!rows.length && html`<tr><td colSpan=${p.cols.length + 1} class="muted small">No rows yet.</td></tr>`}
+      </tbody></table></div>
+    ${p.canEdit && html`<button class="btn secondary small" style="margin-top:6px" onClick=${addRow}>+ Add row</button>`}
+  </div>`;
+}
+
+function ApprovalsPanel(p) {
+  var ideaDecs = (p.decisions||[]).filter(function(d){ return d.related_id === p.idea.idea_id; });
+  var committee = ideaDecs.filter(function(d){ return d.status === 'Decided' && d.outcome; })
+    .sort(function(a,b){ return new Date(b.decision_date||b.updated_at) - new Date(a.decision_date||a.updated_at); })[0];
+  var rows = [
+    ['Requester', (p.idea.requester && p.idea.requester.name) || '—', 'Submitted', fmtDate(p.idea.submitted_date)],
+    ['Transformation Team / Program Manager', '—', p.doc.status, fmtDate(p.doc.updated_at)],
+    ['Decision forum', (committee && committee.committee_target) || p.idea.committee_target || 'To be routed',
+      committee ? committee.outcome : 'Pending', committee ? fmtDate(committee.decision_date) : '—'] ];
+  return html`<div style="margin-top:8px">
+    <label style="display:block;font-weight:600;font-size:12.5px;margin-bottom:4px">Approval status <span class="hint" style="font-weight:400">— derived automatically from the app (Decision Log, document status). No manual entry.</span></label>
+    <table class="data"><thead><tr><th>Role</th><th>Name</th><th>Decision</th><th>Date</th></tr></thead>
+      <tbody>${rows.map(function(r, i){
+        return html`<tr key=${i}><td>${r[0]}</td><td>${r[1]}</td><td><${Badge} color=${r[2]==='Go'||r[2]==='Approved'?'green':r[2]==='Pending'?'amber':'blue'}>${r[2]}<//></td><td>${r[3]}</td></tr>`; })}
+      </tbody></table>
+  </div>`;
+}
+
+function LeanDocEditor(p) {
+  var doc = p.doc, cfg = p.cfg;
+  var isPMTT = p.auth.isPMTT;
+  var isOwnerKit = !isPMTT && p.idea.requester_id === p.auth.profile.id;
+  var canEdit = isPMTT || isOwnerKit;
+  var init = { status: doc.status, content: Object.assign({}, doc.content || {}) };
+  cfg.sections.forEach(function(sec){ (sec.fields||[]).forEach(function(fl){
+    if (fl.key.indexOf('col:') === 0) init[fl.key.slice(4)] = doc[fl.key.slice(4)] || ''; }); });
+  var st = useState(init);
+  var f = st[0];
+  function setContent(k, v){ st[1](function(s){ var n = Object.assign({}, s); n.content = Object.assign({}, n.content); n.content[k] = v; return n; }); }
+  function setCol(k, v){ st[1](function(s){ var n = Object.assign({}, s); n[k] = v; return n; }); }
+  var bz = useState(false), er = useState(null), sv = useState(false);
+  var versions = useAsync(function(){ return api.listVersions(p.docType, doc.id); }, [doc.id]);
+  var merged = Object.assign({}, doc, f, { content: f.content });
+  var comp = p.completeness(merged);
+  var readiness = comp.pct >= GATE_READY_PCT;
+
+  function save(newVersion) {
+    bz[1](true); er[1](null);
+    var chain = Promise.resolve();
+    var fields = { status: f.status, content: f.content };
+    cfg.sections.forEach(function(sec){ (sec.fields||[]).forEach(function(fl){
+      if (fl.key.indexOf('col:') === 0) { var k = fl.key.slice(4); fields[k] = f[k] || null; } }); });
+    if (newVersion) {
+      chain = api.saveVersion(p.docType, doc.id, doc.version, doc, p.auth.profile.id);
+      fields.version = 'v' + (parseInt((doc.version||'v0').replace('v',''),10) + 1);
+    }
+    chain.then(function(){
+      return p.docType === 'business_case' ? api.updateBC(doc.id, fields) : api.updateCharter(doc.id, fields);
+    }).then(function(){ p.onSaved(); versions.reload(); })
+      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+  }
+
+  function renderField(fl) {
+    var isCol = fl.key.indexOf('col:') === 0;
+    var k = isCol ? fl.key.slice(4) : fl.key;
+    var v = isCol ? (f[k] || '') : (f.content[k] || '');
+    var on = isCol ? function(e){ setCol(k, e.target.value); } : function(e){ setContent(k, e.target.value); };
+    return html`<${Field} key=${fl.key} label=${fl.label + (fl.required ? ' *' : '')} hint=${fl.hint}>
+      ${fl.select
+        ? html`<select value=${v} onChange=${on} disabled=${!canEdit}>
+            <option value=""></option>${fl.select.map(function(o){return html`<option key=${o}>${o}</option>`})}
+          </select>`
+        : fl.ta
+          ? html`<textarea value=${v} onInput=${on} disabled=${!canEdit} placeholder=${'[' + (fl.hint||'') + ']'}></textarea>`
+          : html`<input type="text" value=${v} onInput=${on} disabled=${!canEdit} placeholder=${'[' + (fl.hint||'') + ']'} />`}
+    <//>`;
+  }
+
+  return html`<div>
+    <div class="topbar">
+      <div><span class="muted small">${p.idea.idea_id} · ${doc.business_case_id || doc.charter_id} · ${doc.version}</span>
+        <h1>${cfg.titlePrefix} — ${p.idea.title}</h1></div>
+      <div style="display:flex;gap:8px" class="no-print">
+        <button class="btn secondary" onClick=${function(){sv[1](true)}}>Versions (${(versions.data||[]).length})</button>
+        <button class="btn secondary" onClick=${function(){window.print()}}>Export PDF</button>
+        ${isPMTT && html`<button class="btn secondary" onClick=${function(){save(true)}} disabled=${bz[0]}>Save as new version</button>`}
+        ${canEdit && html`<button class="btn" onClick=${function(){save(false)}} disabled=${bz[0]}>Save</button>`}
+      </div>
+    </div>
+    <${RoadmapNote} />
+    ${isOwnerKit && html`<div class="roadmap-note" style="background:var(--green-soft);border-color:var(--green);color:#14532d">
+      🧰 <b>Idea owner kit:</b> ${cfg.guide} The Transformation Team will review and challenge the content.
+    </div>`}
+    <div class="card no-print">
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <div class="small muted" style="margin-bottom:4px">Completeness: ${comp.done}/${comp.total} required items
+            ${' '}<${Badge} color=${readiness ? 'green' : 'amber'}>${readiness ? 'Gate ready' : 'Not gate ready'}<//></div>
+          <${Progress} pct=${comp.pct} />
+        </div>
+        <${Field} label="Status">
+          <select value=${f.status} onChange=${function(e){setCol('status', e.target.value)}} disabled=${!isPMTT}>
+            ${DOC_STATUSES.map(function(s){return html`<option key=${s}>${s}</option>`})}
+          </select><//>
+      </div>
+      ${!readiness && comp.missing.length > 0 && html`<p class="small" style="color:var(--amber);margin-bottom:0">Missing: ${comp.missing.join(' · ')}</p>`}
+    </div>
+    ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+    ${cfg.sections.map(function(sec) {
+      return html`<div class="card" key=${sec.title}>
+        <h2>${sec.title}</h2>
+        <p class="small muted" style="margin-top:0">${sec.guidance}</p>
+        ${(sec.fields||[]).map(renderField)}
+        ${(sec.tables||[]).map(function(tb) {
+          return html`<${TableEditor} key=${tb.key} label=${tb.label} required=${tb.required} cols=${tb.cols}
+            rows=${f.content[tb.key] || []} canEdit=${canEdit}
+            onChange=${function(rows){ setContent(tb.key, rows); }} />`; })}
+        ${sec.approvals && html`<${ApprovalsPanel} idea=${p.idea} doc=${doc} decisions=${p.decisions} />`}
+      </div>`; })}
+    ${sv[0] && html`<${Modal} title="Version history" onClose=${function(){sv[1](false)}}>
+      <p class="small muted">Current: ${doc.version} (live). Snapshots below were saved when a new version was created.</p>
+      ${(versions.data||[]).length === 0 && html`<p class="muted">No previous versions.</p>`}
+      ${(versions.data||[]).map(function(v){
+        return html`<div key=${v.id} class="alert-line"><${Badge} color="blue">${v.version_label}<//>
+          <span class="small">saved by ${(v.saver && v.saver.name)||'—'} · ${fmtDateTime(v.created_at)}</span></div>`; })}<//>`}
+  </div>`;
+}
+
+function BCEditorPage(p) {
+  var idea = useAsync(function(){return api.getIdea(p.id)}, [p.id]);
+  var bc = useAsync(function(){return api.getBCByIdea(p.id)}, [p.id]);
+  var decisions = useAsync(api.listDecisions, [p.id]);
+  if (idea.loading || bc.loading) return html`<p>Loading…</p>`;
+  if (!bc.data) return html`<p class="muted">No business case yet — created automatically at L1 qualification. <${A} href=${'/ideas/'+p.id}>← Back to idea<//></p>`;
+  return html`<div>
+    <p class="no-print"><${A} href=${'/ideas/'+p.id}>← Back to ${idea.data.idea_id}<//></p>
+    <${LeanDocEditor} key=${bc.data.id + bc.data.version} docType="business_case" doc=${bc.data} idea=${idea.data}
+      auth=${p.auth} cfg=${BC_LEAN} completeness=${bcCompletenessLean} decisions=${decisions.data||[]}
+      onSaved=${function(){bc.reload()}} />
+  </div>`;
+}
+function CharterEditorPage(p) {
+  var idea = useAsync(function(){return api.getIdea(p.id)}, [p.id]);
+  var ch = useAsync(function(){return api.getCharterByIdea(p.id)}, [p.id]);
+  var decisions = useAsync(api.listDecisions, [p.id]);
+  if (idea.loading || ch.loading) return html`<p>Loading…</p>`;
+  if (!ch.data) return html`<p class="muted">No charter yet — created automatically at L1 qualification. <${A} href=${'/ideas/'+p.id}>← Back to idea<//></p>`;
+  return html`<div>
+    <p class="no-print"><${A} href=${'/ideas/'+p.id}>← Back to ${idea.data.idea_id}<//></p>
+    <${LeanDocEditor} key=${ch.data.id + ch.data.version} docType="charter" doc=${ch.data} idea=${idea.data}
+      auth=${p.auth} cfg=${CH_LEAN} completeness=${chCompletenessLean} decisions=${decisions.data||[]}
+      onSaved=${function(){ch.reload()}} />
+  </div>`;
+}
+
+/* ================= Decision Log ================= */
+function DecisionLog(p) {
+  var decisions = useAsync(api.listDecisions, []);
+  var profiles = useAsync(api.listProfiles, []);
+  var tb = useState('Open'), tab = tb[0];
+  var ed = useState(null), editing = ed[0], setEditing = ed[1];
+  var TABS = ['Open','Next SteerCo','By committee','Deferred / Escalated','History'];
+  var list = decisions.data || [];
+  function overdue(d){ return d.due_date && d.status==='To Decide' && new Date(d.due_date) < new Date(); }
+  function dueSoon(d){ return d.due_date && d.status==='To Decide' && (new Date(d.due_date)-Date.now())/86400000 <= 7 && !overdue(d); }
+  var view = tab==='Open' ? list.filter(function(d){return d.status==='To Decide'||d.status==='Blocked'})
+    : tab==='Next SteerCo' ? list.filter(function(d){return d.next_steerco && d.status!=='Decided'})
+    : tab==='Deferred / Escalated' ? list.filter(function(d){return ['Deferred','Escalated'].indexOf(d.status)>=0})
+    : tab==='History' ? list.filter(function(d){return d.status==='Decided'}) : list;
+  function DTable(props) {
+    return html`<table class="data">
+      <thead><tr><th>ID</th><th>Decision</th><th>Related</th><th>Committee</th><th>Owner</th><th>Due</th><th>Reco</th><th>Status</th><th>Outcome</th><th></th></tr></thead>
+      <tbody>${props.rows.map(function(d){
+        return html`<tr key=${d.id}>
+          <td class="muted small">${d.decision_id}</td>
+          <td>${d.title}${d.next_steerco && html` <${Badge} color="purple">Next SteerCo<//>`}</td>
+          <td class="small">${d.related_type} · ${d.related_id}</td>
+          <td class="small">${d.committee_target}</td>
+          <td class="small">${(d.owner&&d.owner.name)||'—'}</td>
+          <td>${fmtDate(d.due_date)} ${overdue(d)&&html`<${Badge} color="red">overdue<//>`}${dueSoon(d)&&html`<${Badge} color="amber">≤7d<//>`}</td>
+          <td>${d.recommendation||'—'}</td>
+          <td><${Badge} color=${d.status==='Decided'?'green':d.status==='Escalated'?'red':d.status==='To Decide'?'amber':'gray'}>${d.status}<//></td>
+          <td>${d.outcome||'—'}</td>
+          <td>${p.auth.isPMTT && html`<button class="btn secondary small" onClick=${function(){setEditing(d)}}>Edit</button>`}</td></tr>`; })}
+      ${!props.rows.length && html`<tr><td colSpan="10" class="muted">Nothing here.</td></tr>`}
+      </tbody></table>`;
+  }
+  return html`<div>
+    <div class="topbar"><h1>Decision Log</h1>
+      ${p.auth.isPMTT && html`<button class="btn" onClick=${function(){setEditing('new')}}>+ New decision</button>`}</div>
+    <div class="tabs">${TABS.map(function(t){return html`<button key=${t} class=${tab===t?'active':''} onClick=${function(){tb[1](t)}}>${t}</button>`})}</div>
+    ${tab==='By committee'
+      ? DECISION_COMMITTEES.map(function(c){
+          return html`<div class="card" key=${c}><h2>${c}</h2>
+            <${DTable} rows=${list.filter(function(d){return d.committee_target===c && d.status!=='Decided'})} /></div>`; })
+      : html`<div class="card" style="overflow-x:auto"><${DTable} rows=${view} /></div>`}
+    ${editing && html`<${DecisionModal} decision=${editing==='new'?null:editing} profiles=${profiles.data||[]}
+      me=${p.auth.profile} onClose=${function(){setEditing(null)}}
+      onSaved=${function(){setEditing(null); decisions.reload();}} />`}
+  </div>`;
+}
+function DecisionModal(p) {
+  var init = p.decision ? Object.assign({}, p.decision) : {
+    title:'', related_type:'Idea', related_id:'', committee_target:'Pillar SteerCo', due_date:'',
+    recommendation:'', impact:'', status:'To Decide', outcome:'', decision_date:'', decision_notes:'',
+    next_action:'', next_steerco:false, owner_id:p.me.id, action_owner_id:'' };
+  var st = useState(init);
+  var f = st[0]; function set(k,v){ st[1](function(s){ var n=Object.assign({},s); n[k]=v; return n; }); }
+  var er = useState(null), bz = useState(false);
+  function save() {
+    bz[1](true); er[1](null);
+    var payload = { title:f.title, related_type:f.related_type, related_id:f.related_id,
+      committee_target:f.committee_target, due_date:f.due_date||null, recommendation:f.recommendation||null,
+      impact:f.impact||null, status:f.status, outcome:f.outcome||null,
+      decision_date:f.decision_date||(f.status==='Decided'?new Date().toISOString().slice(0,10):null),
+      decision_notes:f.decision_notes||null, next_action:f.next_action||null, next_steerco:!!f.next_steerco,
+      owner_id:f.owner_id||null, action_owner_id:f.action_owner_id||null };
+    var pr = p.decision ? api.updateDecision(p.decision.id, payload) : api.createDecision(payload);
+    pr.then(p.onSaved).catch(function(e){ er[1](e.message); bz[1](false); });
+  }
+  function psel(label,key) {
+    return html`<${Field} label=${label}>
+      <select value=${f[key]||''} onChange=${function(e){set(key,e.target.value)}}>
+        <option value="">—</option>${p.profiles.map(function(pr){return html`<option key=${pr.id} value=${pr.id}>${pr.name}</option>`})}
+      </select><//>`;
+  }
+  return html`<${Modal} title=${p.decision ? 'Edit '+p.decision.decision_id : 'New decision'} onClose=${p.onClose}>
+    <${Field} label="Decision question *"><input type="text" value=${f.title} onInput=${function(e){set('title',e.target.value)}} /><//>
+    <div class="grid cols-2">
+      <${Field} label="Related type">
+        <select value=${f.related_type} onChange=${function(e){set('related_type',e.target.value)}}>
+          ${['Idea','Business Case','Charter','Project'].map(function(t){return html`<option key=${t}>${t}</option>`})}
+        </select><//>
+      <${Field} label="Related ID *" hint="e.g. IDEA-0001 / PRJ-003">
+        <input type="text" value=${f.related_id} onInput=${function(e){set('related_id',e.target.value)}} /><//>
+      <${Field} label="Committee">
+        <select value=${f.committee_target} onChange=${function(e){set('committee_target',e.target.value)}}>
+          ${DECISION_COMMITTEES.map(function(c){return html`<option key=${c}>${c}</option>`})}
+        </select><//>
+      <${Field} label="Due date"><input type="date" value=${f.due_date||''} onInput=${function(e){set('due_date',e.target.value)}} /><//>
+      ${psel('Owner','owner_id')}
+      ${psel('Action owner (follow-up)','action_owner_id')}
+      <${Field} label="Recommendation">
+        <select value=${f.recommendation||''} onChange=${function(e){set('recommendation',e.target.value)}}>
+          <option value="">—</option>${OUTCOMES.map(function(o){return html`<option key=${o}>${o}</option>`})}
+        </select><//>
+      <${Field} label="Status">
+        <select value=${f.status} onChange=${function(e){set('status',e.target.value)}}>
+          ${DECISION_STATUSES.map(function(s){return html`<option key=${s}>${s}</option>`})}
+        </select><//>
+      ${f.status==='Decided' && html`<${Field} label="Outcome">
+        <select value=${f.outcome||''} onChange=${function(e){set('outcome',e.target.value)}}>
+          <option value="">—</option>${OUTCOMES.map(function(o){return html`<option key=${o}>${o}</option>`})}
+        </select><//>`}
+    </div>
+    <${Field} label="Impact"><textarea value=${f.impact||''} onInput=${function(e){set('impact',e.target.value)}}></textarea><//>
+    <${Field} label="Decision notes / rationale"><textarea value=${f.decision_notes||''} onInput=${function(e){set('decision_notes',e.target.value)}}></textarea><//>
+    <${Field} label="Next action"><input type="text" value=${f.next_action||''} onInput=${function(e){set('next_action',e.target.value)}} /><//>
+    <div class="checks" style="margin-bottom:12px">
+      <label><input type="checkbox" checked=${!!f.next_steerco} onChange=${function(e){set('next_steerco',e.target.checked)}} /> Put on next SteerCo agenda</label>
+    </div>
+    ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+    <button class="btn" disabled=${bz[0]||!f.title||!f.related_id} onClick=${save}>Save</button><//>`;
+}
+
+/* ================= Project detail page (read-only + comments) ================= */
+function ProjectDetailPage(p) {
+  var projects = useAsync(api.listProjects, [p.id]);
+  var ideas = useAsync(api.listIdeas, [p.id]);
+  var decisions = useAsync(api.listDecisions, [p.id]);
+  var activity = useAsync(function(){ return api.listActivity('Project', p.id); }, [p.id]);
+  var cm = useState(''), na = useState(null), bz = useState(false), er = useState(null);
+  var chartersL = useAsync(api.listChartersLight, [p.id]);
+  var bcsL = useAsync(function(){ return sb.from('business_cases').select('id, idea_id, business_case_id, version, status, content, recommendation').then(one); }, [p.id]);
+  if (projects.loading) return html`<p>Loading…</p>`;
+  var pr = (projects.data || []).find(function(x){ return x.id === p.id; });
+  if (!pr) return html`<p class="muted">Project not found. <${A} href="/projects">← Back to projects<//></p>`;
+  var linkedIdea = (ideas.data || []).find(function(i){ return i.idea_id === pr.linked_initiative_id || i.linked_project_id === pr.project_id; });
+  var prCharter = (chartersL.data || []).find(function(x){ return x.smartsheet_project_id === pr.project_id; })
+    || (linkedIdea && (chartersL.data || []).find(function(x){ return x.idea_id === linkedIdea.id; })) || null;
+  var prBC = linkedIdea ? ((bcsL.data || []).find(function(x){ return x.idea_id === linkedIdea.id; }) || null) : null;
+  var alerts = projectAlerts(pr, !!prCharter);
+  var prDecisions = (decisions.data || []).filter(function(d){ return d.related_type === 'Project' && d.related_id === pr.project_id; });
+  var isPMTT = p.auth.isPMTT;
+  var naVal = na[0] === null ? (pr.needs_attention || '') : na[0];
+
+  function postComment() {
+    if (!cm[0].trim()) return;
+    api.addComment('Project', pr.id, p.auth.profile.id, cm[0].trim()).then(function(){ cm[1](''); activity.reload(); });
+  }
+  function saveNA() {
+    bz[1](true); er[1](null);
+    api.updateProject(pr.id, { needs_attention: naVal || null })
+      .then(function(){ projects.reload(); })
+      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+  }
+  function row(k, v) { return html`<tr key=${k}><td class="muted small" style="width:170px">${k}</td><td>${v != null && v !== '' ? v : '—'}</td></tr>`; }
+  function statusBadge(v) {
+    if (!v) return html`<span class="muted">—</span>`;
+    var col = v === 'Approved' ? 'green' : v === 'N/A' ? 'gray' : v === 'Not created' ? 'red' : 'amber';
+    return html`<${Badge} color=${col}>${v}<//>`;
+  }
+  return html`<div>
+    <p class="no-print"><${A} href="/projects">← Back to projects<//></p>
+    <div class="topbar">
+      <div>
+        <span class="muted small">${pr.project_id} · ${pr.project_category || 'Digitalization'} · imported ${pr.imported_at ? fmtDateTime(pr.imported_at) : '—'}${pr.source_file ? ' (' + pr.source_file + ')' : ''}</span>
+        <h1>${pr.project_name}</h1>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+          <${Badge} color="blue">${pr.current_stage || 'Stage ?'}<//>
+          ${pr.digital_pillar && html`<${Badge} color="purple">${pr.digital_pillar}<//>`}
+          ${isPriorityProject(pr) && html`<${Badge} color="red">Priority<//>`}
+          ${isQuickWinProject(pr) && html`<${Badge} color="green">Quick win<//>`}
+          ${alerts.length > 0 && html`<${Badge} color="red">${alerts.length} alert(s)<//>`}
+        </div>
+      </div>
+      <button class="btn secondary no-print" onClick=${function(){window.print()}}>🖨 Print</button>
+    </div>
+    <p class="muted small">SmartSheet is the source of truth — fields below are read-only and updated via import.</p>
+    <div class="grid cols-2">
+      <div>
+        <div class="card">
+          <h2>Description</h2>
+          <p class="small" style="white-space:pre-wrap">${pr.project_description || 'No description.'}</p>
+        </div>
+        ${alerts.length > 0 && html`<div class="card" style="border-left:4px solid var(--red)">
+          <h2>⚠️ Alerts</h2>
+          ${alerts.map(function(a, i){ return html`<div key=${i} class="alert-line">
+            <${Badge} color=${a.type === 'budget' ? 'red' : a.type === 'planning' ? 'amber' : 'gray'}>${a.type}<//>
+            <span>${a.msg}</span></div>`; })}
+        </div>`}
+        <div class="card">
+          <h2>Project data</h2>
+          <table class="data"><tbody>
+            ${row('Execution phase', pr.execution_phase)}
+            ${row('Benefiting functions', pr.key_benefiting_functions)}
+            ${row('Pillar sponsor', pr.pillar_sponsor)}
+            ${row('Project Manager (lead)', pr.project_lead)}
+            ${row('IT lead', pr.pwt_it_lead)}
+            ${row('Integrator / consultants', pr.integrator_consultants)}
+            <tr><td class="muted small">Charter</td><td>${(!pr.charter_status || pr.charter_status === 'Not created') && prCharter
+              ? html`<${Badge} color="blue">In app: ${prCharter.charter_id} ${prCharter.version} · ${prCharter.status}<//>`
+              : html`${statusBadge(pr.charter_status)} ${pr.charter_file ? ' · ' + pr.charter_file : ''}`}</td></tr>
+            <tr><td class="muted small">IT demand</td><td>${statusBadge(pr.it_demand_status)}</td></tr>
+            <tr><td class="muted small">AR</td><td>${statusBadge(pr.ar_status)} ${pr.ar_file ? ' · ' + pr.ar_file : ''}</td></tr>
+            ${row('CAPEX k€', pr.capex_keur)}
+            ${row('Current year budget k€', pr.current_year_budget)}
+            ${row('Cost center / IO', pr.cost_center_internal_order)}
+            ${row('Planned', fmtDate(pr.planned_start_date) + ' → ' + fmtDate(pr.planned_end_date))}
+          </tbody></table>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h2>Origin & governance</h2>
+          ${linkedIdea
+            ? html`<p>💡 Linked initiative: <${A} href=${'/ideas/'+linkedIdea.id}>${linkedIdea.idea_id} — ${linkedIdea.title}<//></p>`
+            : html`<p class="muted small">Linked initiative: ${pr.linked_initiative_id || 'none recorded'}</p>`}
+          ${(prBC || prCharter) && html`<div style="background:#f7f8fb;border-radius:8px;padding:10px;margin:8px 0">
+            <div class="small" style="font-weight:600;margin-bottom:4px">📚 Living governance documents <span class="hint" style="font-weight:400">— versioned & change-logged, they evolve with the project</span></div>
+            ${prBC && linkedIdea && html`<p style="margin:4px 0">📄 <${A} href=${'/ideas/'+linkedIdea.id+'/business-case'}>Business Case ${prBC.business_case_id} (${prBC.version})<//>
+              ${' '}<${Badge} color=${prBC.status==='Approved'?'green':'blue'}>${prBC.status}<//></p>`}
+            ${prCharter && html`<p style="margin:4px 0">📄 ${linkedIdea
+                ? html`<${A} href=${'/ideas/'+linkedIdea.id+'/charter'}>Project Charter ${prCharter.charter_id} (${prCharter.version})<//>`
+                : html`Project Charter ${prCharter.charter_id} (${prCharter.version})`}
+              ${' '}<${Badge} color=${prCharter.status==='Approved'?'green':'blue'}>${prCharter.status}<//></p>`}
+          </div>`}
+          ${prDecisions.length ? prDecisions.map(function(d){
+            return html`<div key=${d.id} class="alert-line">
+              <${Badge} color=${d.status === 'Decided' ? 'green' : 'amber'}>${d.status}<//>
+              <span>${d.title}</span>
+              <span class="muted small">${d.committee_target}${d.outcome ? ' · ' + d.outcome : ''}</span></div>`; })
+            : html`<p class="muted small">No project-level decisions logged. Create them in the Decision Log with Related = Project · ${pr.project_id}.</p>`}
+          ${isPMTT && html`<div style="margin-top:10px">
+            <${Field} label="Needs attention (app-level flag)" hint="Priority, Quick Win, Budget, Planning…">
+              <input type="text" value=${naVal} onInput=${function(e){na[1](e.target.value)}} /><//>
+            <button class="btn small" onClick=${saveNA} disabled=${bz[0]}>Save flag</button>
+            ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+          </div>`}
+        </div>
+        <div class="card">
+          <h2>Comments & activity</h2>
+          <div style="display:flex;gap:8px;margin-bottom:10px" class="no-print">
+            <input type="text" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:7px"
+              placeholder="Add a comment…" value=${cm[0]} onInput=${function(e){cm[1](e.target.value)}}
+              onKeyDown=${function(e){ if (e.key === 'Enter') postComment(); }} />
+            <button class="btn small" onClick=${postComment}>Post</button>
+          </div>
+          ${(activity.data || []).map(function(a){
+            return html`<div key=${a.id} class="activity-item">
+              <span class="who">${(a.user && a.user.name) || 'System'}</span> ${a.kind === 'comment' ? '💬' : '⚙️'} ${a.message}
+              <div class="when">${fmtDateTime(a.created_at)}</div></div>`; })}
+          ${!(activity.data || []).length && html`<p class="muted small">No activity yet.</p>`}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ================= Projects ================= */
+function StatusB(p) {
+  if (!p.v) return html`<span class="muted">—</span>`;
+  var c = p.v==='Approved'?'green':p.v==='N/A'?'gray':p.v==='Not created'?'red':'amber';
+  return html`<${Badge} color=${c}>${p.v}<//>`;
+}
+function ProjectsPage() {
+  var projects = useAsync(api.listProjects, []);
+  var chartersL = useAsync(api.listChartersLight, []);
+  var fl = useState({stage:'',pillar:'',flag:'',q:''});
+  var flt = fl[0]; function setF(k,v){ fl[1](function(s){ var n=Object.assign({},s); n[k]=v; return n; }); }
+  var selS = useState(null), selected = selS[0];
+  var list = useMemo(function(){
+    return (projects.data||[]).filter(function(p){
+      return (!flt.stage || (p.current_stage||'').indexOf(flt.stage.slice(0,2)) === 0) &&
+        (!flt.pillar || p.digital_pillar === flt.pillar) &&
+        (!flt.flag || (flt.flag==='priority'&&isPriorityProject(p)) || (flt.flag==='quick_win'&&isQuickWinProject(p)) || (flt.flag==='alerts'&&projectAlerts(p).length>0)) &&
+        (!flt.q || (p.project_name+' '+p.project_id+' '+(p.linked_initiative_id||'')).toLowerCase().indexOf(flt.q.toLowerCase()) >= 0);
+    });
+  }, [projects.data, flt]);
+  if (projects.loading) return html`<p>Loading…</p>`;
+  var chMap = charterMap(chartersL.data);
+  return html`<div>
+    <div class="topbar"><div><h1>Projects</h1>
+      <p class="muted small mb0">Mirror of SmartSheet (official source of truth). Read-only here — update via import, push changes via export.</p></div></div>
+    <div class="filters">
+      <input placeholder="Search…" value=${flt.q} onInput=${function(e){setF('q',e.target.value)}} />
+      <select value=${flt.stage} onChange=${function(e){setF('stage',e.target.value)}}><option value="">All stages</option>${PROJECT_STAGES.map(function(s){return html`<option key=${s}>${s}</option>`})}</select>
+      <select value=${flt.pillar} onChange=${function(e){setF('pillar',e.target.value)}}><option value="">All pillars</option>${PILLARS.map(function(s){return html`<option key=${s}>${s}</option>`})}</select>
+      <select value=${flt.flag} onChange=${function(e){setF('flag',e.target.value)}}>
+        <option value="">All</option><option value="priority">Priority</option>
+        <option value="quick_win">Quick win</option><option value="alerts">With alerts</option></select>
+    </div>
+    <div class="card" style="overflow-x:auto"><table class="data">
+      <thead><tr><th>ID</th><th>Name</th><th>Stage</th><th>Pillar</th><th>Lead</th><th>Sponsor</th><th>Charter</th><th>IT Demand</th><th>AR</th><th>CAPEX k€</th><th>Budget</th><th>Start</th><th>End</th><th>Initiative</th><th>Alerts</th></tr></thead>
+      <tbody>${list.map(function(p){
+        var alerts = projectAlerts(p, !!chMap[p.project_id]);
+        return html`<tr key=${p.id} onClick=${function(){nav('/projects/'+p.id)}} style="cursor:pointer">
+          <td>${p.project_id}</td>
+          <td>${p.project_name}${isPriorityProject(p)&&html` <${Badge} color="red">P<//>`}${isQuickWinProject(p)&&html` <${Badge} color="green">QW<//>`}</td>
+          <td class="small">${p.current_stage||'—'}</td><td class="small">${p.digital_pillar||'—'}</td>
+          <td class="small">${p.project_lead||'—'}</td><td class="small">${p.pillar_sponsor||'—'}</td>
+          <td>${(!p.charter_status || p.charter_status === 'Not created') && chMap[p.project_id]
+            ? html`<${Badge} color="blue">In app ${chMap[p.project_id].version}<//>`
+            : html`<${StatusB} v=${p.charter_status} />`}</td><td><${StatusB} v=${p.it_demand_status} /></td><td><${StatusB} v=${p.ar_status} /></td>
+          <td>${p.capex_keur != null ? p.capex_keur : '—'}</td><td>${p.current_year_budget != null ? p.current_year_budget : '—'}</td>
+          <td class="small">${fmtDate(p.planned_start_date)}</td><td class="small">${fmtDate(p.planned_end_date)}</td>
+          <td class="small">${p.linked_initiative_id||'—'}</td>
+          <td>${alerts.length > 0 && html`<${Badge} color="red">${alerts.length} ⚠<//>`}</td></tr>`; })}
+      ${!list.length && html`<tr><td colSpan="15" class="muted">No projects. Import a SmartSheet export from the SmartSheet I/O screen.</td></tr>`}
+      </tbody></table></div>
+    ${selected && html`<${ProjectPanel} p=${selected} onClose=${function(){selS[1](null)}} />`}
+  </div>`;
+}
+function ProjectPanel(props) {
+  var p = props.p;
+  var alerts = projectAlerts(p);
+  var rows = [['Stage',p.current_stage],['Execution phase',p.execution_phase],['Pillar',p.digital_pillar],
+    ['Benefiting functions',p.key_benefiting_functions],['Sponsor',p.pillar_sponsor],['Lead',p.project_lead],
+    ['IT lead',p.pwt_it_lead],['Integrator',p.integrator_consultants],['Charter',p.charter_status],
+    ['IT demand',p.it_demand_status],['AR',p.ar_status],['CAPEX k€',p.capex_keur],['Current Y budget',p.current_year_budget],
+    ['Cost center',p.cost_center_internal_order],['Planned',fmtDate(p.planned_start_date)+' → '+fmtDate(p.planned_end_date)],
+    ['Linked initiative',p.linked_initiative_id],
+    ['Imported',p.imported_at ? fmtDateTime(p.imported_at)+' ('+(p.source_file||'unknown file')+')' : 'Created in app']];
+  return html`<${Modal} title=${p.project_id+' — '+p.project_name} onClose=${props.onClose}>
+    <p class="small" style="white-space:pre-wrap">${p.project_description||'No description.'}</p>
+    ${alerts.length > 0 && html`<div class="card" style="background:var(--red-soft);border:none">
+      ${alerts.map(function(a,i){return html`<div key=${i} class="small">⚠ [${a.type}] ${a.msg}</div>`})}</div>`}
+    <table class="data"><tbody>
+      ${rows.map(function(r){return html`<tr key=${r[0]}><td class="muted small" style="width:150px">${r[0]}</td><td>${r[1] != null ? r[1] : '—'}</td></tr>`})}
+    </tbody></table><//>`;
+}
+
+/* ================= Import / Export ================= */
+function ImportExportPage() {
+  var projects = useAsync(api.listProjects, []);
+  var ideas = useAsync(api.listIdeas, []);
+  var pv = useState(null), preview = pv[0];
+  var bz = useState(false), dn = useState(null), er = useState(null);
+  function onFile(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    er[1](null); dn[1](null); bz[1](true);
+    parseSmartsheetFile(file).then(function(res){
+      return api.existingProjectIds().then(function(existing){
+        var dupes = res.rows.filter(function(r){return existing.has(r.project_id)}).map(function(r){return r.project_id});
+        pv[1]({ rows:res.rows, warnings:res.warnings, dupes:dupes, fileName:file.name });
+      });
+    }).catch(function(ex){ er[1](ex.message); }).finally(function(){ bz[1](false); e.target.value = ''; });
+  }
+  function confirmImport() {
+    bz[1](true); er[1](null);
+    var stamped = preview.rows.map(function(r){
+      return Object.assign({}, r, { source_file:preview.fileName, imported_at:new Date().toISOString() }); });
+    api.upsertProjects(stamped).then(function(){
+      dn[1]('Imported '+stamped.length+' projects from '+preview.fileName+' ('+preview.dupes.length+' updated, '+(stamped.length-preview.dupes.length)+' new).');
+      pv[1](null); projects.reload();
+    }).catch(function(ex){ er[1](ex.message); }).finally(function(){ bz[1](false); });
+  }
+  var converted = (ideas.data||[]).filter(function(i){return i.stage==='Converted'});
+  function exportConverted() {
+    bz[1](true); er[1](null);
+    var items = [], problems = [];
+    var chain = Promise.resolve();
+    converted.forEach(function(idea){
+      chain = chain.then(function(){
+        return Promise.all([api.getCharterByIdea(idea.id), api.getBCByIdea(idea.id)]).then(function(res){
+          var errs = validateForExport(idea, res[0]);
+          if (errs.length) problems.push(idea.idea_id+': '+errs.join(', '));
+          items.push({ idea:idea, charter:res[0], bc:res[1] });
+        });
+      });
+    });
+    chain.then(function(){
+      if (problems.length && !window.confirm('Some initiatives have gaps:\n'+problems.join('\n')+'\n\nExport anyway?')) return;
+      exportInitiativesToSmartsheet(items, 'smartsheet_import_'+new Date().toISOString().slice(0,10)+'.xlsx');
+      dn[1]('Exported '+items.length+' converted initiatives to a SmartSheet-ready file.');
+    }).catch(function(ex){ er[1](ex.message); }).finally(function(){ bz[1](false); });
+  }
+  var lastImport = (projects.data||[]).filter(function(p){return p.imported_at})
+    .sort(function(a,b){return new Date(b.imported_at)-new Date(a.imported_at)})[0];
+  return html`<div style="max-width:900px">
+    <div class="topbar"><h1>SmartSheet Import / Export</h1></div>
+    <p class="muted small">SmartSheet remains the official source of truth. Phase 1 uses file exchange; a direct connector is on the roadmap (Phase 2).</p>
+    <div class="card">
+      <h2>Import projects (SmartSheet XLSX/CSV export)</h2>
+      ${lastImport && html`<p class="small muted">Last import: ${fmtDateTime(lastImport.imported_at)} — ${lastImport.source_file}</p>`}
+      <input type="file" accept=".xlsx,.csv" onChange=${onFile} disabled=${bz[0]} />
+      ${preview && html`<div style="margin-top:14px">
+        <p><b>${preview.rows.length}</b> projects found in <b>${preview.fileName}</b>.</p>
+        ${preview.dupes.length > 0 && html`<p class="small" style="color:var(--amber)">⚠ ${preview.dupes.length} existing project IDs will be updated: ${preview.dupes.join(', ')}</p>`}
+        ${preview.warnings.map(function(w,i){return html`<p key=${i} class="small" style="color:var(--amber)">⚠ ${w}</p>`})}
+        <div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
+          <table class="data"><thead><tr><th>Id</th><th>Name</th><th>Stage</th><th>Pillar</th><th>Lead</th><th>Initiative</th></tr></thead>
+          <tbody>${preview.rows.map(function(r,i){
+            return html`<tr key=${i}><td>${r.project_id}${preview.dupes.indexOf(r.project_id)>=0&&html` <${Badge} color="amber">update<//>`}</td>
+              <td>${r.project_name}</td><td class="small">${r.current_stage}</td><td class="small">${r.digital_pillar}</td>
+              <td class="small">${r.project_lead}</td><td class="small">${r.linked_initiative_id}</td></tr>`})}</tbody></table>
+        </div>
+        <button class="btn" onClick=${confirmImport} disabled=${bz[0]}>Confirm import</button>${' '}
+        <button class="btn secondary" onClick=${function(){pv[1](null)}}>Cancel</button>
+      </div>`}
+    </div>
+    <div class="card">
+      <h2>Export converted initiatives (SmartSheet-ready)</h2>
+      <p class="small muted">Generates an XLSX matching the SmartSheet column structure for the ${converted.length} converted initiative(s). Required fields are validated first.</p>
+      <button class="btn" onClick=${exportConverted} disabled=${bz[0]||!converted.length}>Export ${converted.length} initiative(s)</button>
+    </div>
+    ${dn[0] && html`<p style="color:var(--green)">${dn[0]}</p>`}
+    ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+  </div>`;
+}
+
+
+/* ================= Pipeline swimlane chart (collapsible ideation) ================= */
+function pipeSlots(expanded) {
+  var idea = expanded
+    ? [ { key:'L0 Submitted', short:'L0', type:'stage' }, { key:'L0 Triage', short:'Triage', type:'stage' },
+        { key:'L1 Qualified', short:'L1', type:'stage' }, { key:'L2 BC/Charter', short:'L2', type:'stage' } ]
+    : [ { key:'ideation', short:'Ideation L0→L2', type:'stage' } ];
+  return idea.concat([
+    { key:'G1', short:'G1', type:'gate', sub:'Approve for scoping' },
+    { key:'S1', short:'S1', type:'stage' }, { key:'G2', short:'G2', type:'gate', sub:'Business case decision' },
+    { key:'S2', short:'S2', type:'stage' }, { key:'G3', short:'G3', type:'gate', sub:'Action plan decision' },
+    { key:'S3', short:'S3', type:'stage' }, { key:'G4', short:'G4', type:'gate', sub:'Implementation complete' },
+    { key:'S4', short:'S4', type:'stage' }, { key:'G5', short:'G5', type:'gate', sub:'Sustainable / closed' } ]);
+}
+function pipeSlotIdea(i, expanded) {
+  if (expanded) {
+    var m = { 'L0 Submitted':0, 'L0 Triage':1, 'L1 Qualified':2, 'L2 BC/Charter':3, 'G1 Approval':4 };
+    return m[i.stage] != null ? m[i.stage] : null;
+  }
+  var m2 = { 'L0 Submitted':0, 'L0 Triage':0, 'L1 Qualified':0, 'L2 BC/Charter':0, 'G1 Approval':1 };
+  return m2[i.stage] != null ? m2[i.stage] : null;
+}
+function pipeSlotProject(p, expanded) {
+  var base = expanded ? 5 : 2;
+  var s = (p.current_stage || '');
+  var m = { 'S1':0, 'G2':1, 'S2':2, 'G3':3, 'S3':4, 'G4':5, 'S4':6, 'G5':7 };
+  for (var k in m) { if (s.indexOf(k) === 0) return base + m[k]; }
+  return base;
+}
+function parseNum(v) {
+  if (v == null) return 0;
+  var m = String(v).replace(',', '.').match(/[\d.]+/);
+  return m ? parseFloat(m[0]) : 0;
+}
+function pipeR(value) {
+  if (value > 0) return Math.max(7, Math.min(22, 6 + Math.sqrt(value) * 1.6));
+  return 9;
+}
+function PipelineChart(p) {
+  var ex = useState(false), expanded = ex[0];
+  var SLOTS = pipeSlots(expanded);
+  var rows = [];
+  var seen = {};
+  function addPillar(x){ var k = x || 'Unassigned'; if (!seen[k]) { seen[k] = true; rows.push(k); } }
+  p.ideas.forEach(function(i){ addPillar(i.digital_pillar); });
+  p.projects.forEach(function(pr){ addPillar(pr.digital_pillar); });
+  if (!rows.length) return html`<p class="muted">No data yet — submit ideas or import projects.</p>`;
+  var LW = 170, RH = 56, top = 54;
+  var CW = expanded ? 72 : 96;
+  var ideationCW = expanded ? CW : 130; // wider single ideation column
+  function slotX(si) { return LW + (expanded ? CW * si : (si === 0 ? 0 : ideationCW + CW * (si - 1))); }
+  function slotW(si) { return (!expanded && si === 0) ? ideationCW : CW; }
+  var W = slotX(SLOTS.length - 1) + CW + 10, H = top + RH * rows.length + 10;
+  var cell = {};
+  var bubbles = [];
+  function place(rowKey, slot, r, item) {
+    if (slot === null) return;
+    var ri = rows.indexOf(rowKey);
+    var key = ri + '_' + slot;
+    var n = cell[key] = (cell[key] || 0) + 1;
+    var cx = slotX(slot) + slotW(slot) / 2 + (((n - 1) % 3) - 1) * 22;
+    var cy = top + RH * ri + RH / 2 + (Math.floor((n - 1) / 3) % 2 ? 13 : -5 * ((n - 1) % 2));
+    bubbles.push(Object.assign({ cx: cx, cy: cy, r: r }, item));
+  }
+  p.ideas.forEach(function(i) {
+    place(i.digital_pillar || 'Unassigned', pipeSlotIdea(i, expanded), pipeR(parseNum(i.estimated_value)), {
+      kind: 'idea', id: i.id, halo: i.priority || triageOverdue(i),
+      label: i.idea_id + ' — ' + i.title + ' · ' + i.stage + (i.estimated_value ? ' · ' + i.estimated_value : '') });
+  });
+  p.projects.forEach(function(pr) {
+    place(pr.digital_pillar || 'Unassigned', pipeSlotProject(pr, expanded), pipeR(parseNum(pr.capex_keur)), {
+      kind: 'project', id: pr.id, halo: projectAlerts(pr, !!(p.chMap || {})[pr.project_id]).length > 0 || isPriorityProject(pr),
+      label: pr.project_id + ' — ' + pr.project_name + (pr.capex_keur != null ? ' · CAPEX ' + pr.capex_keur + ' k€' : ' · no CAPEX data') });
+  });
+  return html`<div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:4px" class="no-print">
+      <button class="btn secondary small" onClick=${function(){ex[1](!expanded)}}>
+        ${expanded ? '⇤ Collapse ideation (L0→L2)' : '⇥ Expand ideation stages'}
+      </button>
+    </div>
+    <div style="overflow-x:auto">
+    <svg width=${W} height=${H} viewBox="0 0 ${W} ${H}" style="min-width:${W}px">
+      ${rows.map(function(pl, ri) {
+        return html`<rect key=${'r'+ri} x="0" y=${top + RH * ri} width=${W} height=${RH} fill=${ri % 2 ? '#fafbfd' : '#ffffff'} />`; })}
+      ${rows.map(function(pl, ri) {
+        var label = pl.length > 24 ? pl.slice(0, 23) + '…' : pl;
+        return html`<text key=${'t'+ri} x="8" y=${top + RH * ri + RH / 2 + 4} font-size="11.5" font-weight="600" fill="#333">${label}</text>`; })}
+      ${!expanded && html`<rect x=${LW} y=${top} width=${ideationCW} height=${RH * rows.length} fill="#6d3fc0" opacity="0.04" />`}
+      ${SLOTS.map(function(x, i) {
+        var cx = slotX(i) + slotW(i) / 2;
+        if (x.type === 'gate') {
+          return html`<g key=${x.key}>
+            <line x1=${cx} y1="44" x2=${cx} y2=${H - 8} stroke="#d5d9e0" stroke-dasharray="3 3" />
+            <rect x=${cx - 13} y="16" width="26" height="26" transform="rotate(45 ${cx} 29)" fill="#101a33"><title>${x.sub}</title></rect>
+            <text x=${cx} y="33" fill="#fff" font-size="10" font-weight="700" text-anchor="middle">${x.short}</text>
+          </g>`;
+        }
+        return html`<text key=${x.key} x=${cx} y="32" font-size="11" font-weight="700" text-anchor="middle" fill="#66708a">${x.short}</text>`; })}
+      ${bubbles.map(function(b, k) {
+        return html`<g key=${k} style="cursor:pointer" onClick=${function(){ nav(b.kind === 'idea' ? '/ideas/' + b.id : '/projects/' + b.id); }}>
+          ${b.halo && html`<circle cx=${b.cx} cy=${b.cy} r=${b.r + 4} fill="none" stroke="#fff" stroke-width="5" />`}
+          ${b.halo && html`<circle cx=${b.cx} cy=${b.cy} r=${b.r + 4} fill="none" stroke="#c9342c" stroke-width="2.5" />`}
+          <circle cx=${b.cx} cy=${b.cy} r=${b.r}
+            fill=${b.kind === 'idea' ? '#eef0f4' : '#a9c2e8'}
+            stroke=${b.kind === 'idea' ? '#8892ab' : '#6d88c4'}
+            stroke-width="1.5" stroke-dasharray=${b.kind === 'idea' ? '4 3' : ''} opacity="0.9">
+            <title>${b.label}</title>
+          </circle>
+        </g>`; })}
+    </svg>
+    </div>
+    <div class="legend" style="display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:6px;align-items:center">
+      <span><span style="width:12px;height:12px;border-radius:50%;display:inline-block;background:#eef0f4;border:1.5px dashed #8892ab;margin-right:5px"></span>Idea (size = estimated value)</span>
+      <span><span style="width:12px;height:12px;border-radius:50%;display:inline-block;background:#a9c2e8;border:1.5px solid #6d88c4;margin-right:5px"></span>Project (size = CAPEX)</span>
+      <span><span style="width:12px;height:12px;border-radius:50%;display:inline-block;border:2.5px solid #c9342c;margin-right:5px"></span>Alert / priority</span>
+      <span>◆ Gates G1→G5 · click a bubble to open its page</span>
+    </div>
+  </div>`;
+}
+
+/* ================= SteerCo PPT export ================= */
+function exportSteercoPPT(I, P, D, chMap) {
+  var pres = new PptxGenJS();
+  pres.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
+  pres.layout = 'WIDE';
+  var RED = 'C4161C', INK = '111111', GREY = '666666', GREEN = '1A7F37', AMBER = 'B45309';
+  function slide(title) {
+    var s = pres.addSlide();
+    s.addText(title, { x:0.5, y:0.3, w:12.3, h:0.6, fontSize:22, bold:true, color:INK });
+    s.addShape('rect', { x:0.5, y:0.95, w:12.3, h:0.03, fill:{color:RED} });
+    return s;
+  }
+  var today = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'long', year:'numeric' });
+  // Slide 1 - title + funnel
+  var s1 = pres.addSlide();
+  s1.addText('Digitalization SteerCo Pack', { x:0.5, y:2.2, w:12.3, h:1, fontSize:34, bold:true, color:INK });
+  s1.addText(today + '  ·  Generated by the Digitalization Program Cockpit', { x:0.5, y:3.2, w:12.3, h:0.5, fontSize:14, color:GREY });
+  var funnel = [
+    ['Submitted', I.filter(function(i){return i.stage==='L0 Submitted'}).length],
+    ['In triage', I.filter(function(i){return i.stage==='L0 Triage'}).length],
+    ['Qualified', I.filter(function(i){return ['L1 Qualified','L2 BC/Charter'].indexOf(i.stage)>=0}).length],
+    ['At G1', I.filter(function(i){return i.stage==='G1 Approval'}).length],
+    ['Converted', I.filter(function(i){return i.stage==='Converted'}).length],
+    ['Active projects', P.filter(function(p){return (p.current_stage||'').indexOf('G5')!==0}).length]];
+  funnel.forEach(function(kv, k) {
+    s1.addText(String(kv[1]), { x:0.5+k*2.1, y:4.4, w:2, h:0.7, fontSize:30, bold:true, color:RED, align:'center' });
+    s1.addText(kv[0], { x:0.5+k*2.1, y:5.1, w:2, h:0.4, fontSize:11, color:GREY, align:'center' });
+  });
+  // Slide 2 - decisions to take
+  var open = D.filter(function(d){return ['To Decide','Blocked'].indexOf(d.status)>=0});
+  var s2 = slide('Decisions to take');
+  var rows = [[
+    { text:'Committee', options:{bold:true, color:'FFFFFF', fill:{color:INK}} },
+    { text:'Decision', options:{bold:true, color:'FFFFFF', fill:{color:INK}} },
+    { text:'Related', options:{bold:true, color:'FFFFFF', fill:{color:INK}} },
+    { text:'Due', options:{bold:true, color:'FFFFFF', fill:{color:INK}} },
+    { text:'Reco', options:{bold:true, color:'FFFFFF', fill:{color:INK}} }]];
+  open.slice(0, 12).forEach(function(d) {
+    rows.push([ d.committee_target||'-', d.title||'-', (d.related_type||'')+' '+(d.related_id||''),
+      d.due_date ? fmtDate(d.due_date) : '-', d.recommendation||'-' ]);
+  });
+  if (open.length) s2.addTable(rows, { x:0.5, y:1.2, w:12.3, fontSize:11, border:{pt:0.5, color:'DDDDDD'}, autoPage:true });
+  else s2.addText('No open decisions.', { x:0.5, y:1.3, fontSize:14, color:GREY });
+  // Slide 3 - alerts
+  var s3 = slide('Alerts & exceptions');
+  var alerts = [];
+  P.forEach(function(p) { projectAlerts(p, !!(chMap || {})[p.project_id]).forEach(function(a) {
+    alerts.push({ t:'['+a.type.toUpperCase()+'] '+p.project_id+' '+p.project_name+' - '+a.msg,
+      c: a.type==='budget' ? RED : a.type==='planning' ? AMBER : GREY }); }); });
+  I.filter(triageOverdue).forEach(function(i) {
+    alerts.push({ t:'[TRIAGE] '+i.idea_id+' '+i.title+' - waiting more than '+TRIAGE_SLA_DAYS+' days', c:AMBER }); });
+  if (alerts.length) alerts.slice(0, 18).forEach(function(a, k) {
+    s3.addText('- ' + a.t, { x:0.6, y:1.2+k*0.33, w:12, h:0.32, fontSize:11.5, color:a.c });
+  });
+  else s3.addText('No alerts.', { x:0.5, y:1.3, fontSize:14, color:GREEN });
+  // Slide 4 - escalations, priorities, quick wins
+  var s4 = slide('Escalations · Priorities · Quick wins');
+  var esc4 = D.filter(function(d){return d.status==='Escalated'});
+  var prio = I.filter(function(i){return i.priority}).map(function(i){return i.idea_id+' '+i.title})
+    .concat(P.filter(isPriorityProject).map(function(p){return p.project_id+' '+p.project_name}));
+  var qw = I.filter(function(i){return i.quick_win}).map(function(i){return i.idea_id+' '+i.title})
+    .concat(P.filter(isQuickWinProject).map(function(p){return p.project_id+' '+p.project_name}));
+  function col(s, x, title, items, color) {
+    s.addText(title, { x:x, y:1.2, w:4, h:0.4, fontSize:14, bold:true, color:color });
+    (items.length ? items : ['None']).slice(0, 12).forEach(function(t, k) {
+      s.addText('- ' + t, { x:x, y:1.7+k*0.32, w:4, h:0.3, fontSize:11, color:INK }); });
+  }
+  col(s4, 0.5, 'Escalations', esc4.map(function(d){return d.title}), RED);
+  col(s4, 4.7, 'Priorities', prio, INK);
+  col(s4, 8.9, 'Quick wins', qw, GREEN);
+  // Slide 5 - highlights
+  var s5 = slide('Positive highlights');
+  var hl = D.filter(function(d){return d.status==='Decided'&&d.outcome==='Go'}).slice(0,5).map(function(d){return 'Go decision: '+d.title})
+    .concat(I.filter(function(i){return i.stage==='Converted'}).slice(0,5).map(function(i){return i.idea_id+' converted to project '+i.linked_project_id}));
+  if (hl.length) hl.slice(0, 12).forEach(function(t, k) {
+    s5.addText('- ' + t, { x:0.6, y:1.2+k*0.38, w:12, h:0.35, fontSize:13, color:GREEN }); });
+  else s5.addText('Highlights will appear as decisions are taken and initiatives convert.', { x:0.5, y:1.3, fontSize:13, color:GREY });
+  pres.writeFile({ fileName: 'steerco_pack_' + new Date().toISOString().slice(0,10) + '.pptx' });
+}
+
+/* ================= Cockpit ================= */
+var COCKPIT_STAGES = ['Ideation (L0→L2)','G1','S1','G2','S2','G3','S3','G4','S4','G5'];
+function CockpitPage() {
+  var expPillar = useState(null);
+  var cfl = useState({ pillar:'', stage:'' });
+  var ideas = useAsync(api.listIdeas, []);
+  var chartersL = useAsync(api.listChartersLight, []);
+  var projects = useAsync(api.listProjects, []);
+  var decisions = useAsync(api.listDecisions, []);
+  if (ideas.loading || projects.loading || decisions.loading) return html`<p>Loading…</p>`;
+  var I = ideas.data||[], P = projects.data||[], D = decisions.data||[];
+  var chMap = charterMap(chartersL.data);
+  var cf = cfl[0];
+  if (cf.pillar) {
+    I = I.filter(function(i){ return (i.digital_pillar || 'Unassigned') === cf.pillar; });
+    P = P.filter(function(p){ return (p.digital_pillar || 'Unassigned') === cf.pillar; });
+  }
+  if (cf.stage) {
+    if (cf.stage === 'Ideation (L0→L2)') {
+      I = I.filter(function(i){ return ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter'].indexOf(i.stage) >= 0; });
+      P = [];
+    } else if (cf.stage === 'G1') {
+      I = I.filter(function(i){ return i.stage === 'G1 Approval'; });
+      P = [];
+    } else {
+      I = [];
+      P = P.filter(function(p){ return (p.current_stage || '').indexOf(cf.stage) === 0; });
+    }
+  }
+  var funnel = [
+    ['Submitted', I.filter(function(i){return i.stage==='L0 Submitted'}).length],
+    ['In triage', I.filter(function(i){return i.stage==='L0 Triage'}).length],
+    ['Qualified (L1/L2)', I.filter(function(i){return ['L1 Qualified','L2 BC/Charter'].indexOf(i.stage)>=0}).length],
+    ['At G1', I.filter(function(i){return i.stage==='G1 Approval'}).length],
+    ['Converted', I.filter(function(i){return i.stage==='Converted'}).length]];
+  var activeP = P.filter(function(p){return (p.current_stage||'').indexOf('G5') !== 0});
+  var completed = P.filter(function(p){return (p.current_stage||'').indexOf('G5') === 0});
+  var withAlerts = P.map(function(p){return {p:p, alerts:projectAlerts(p, !!chMap[p.project_id])}}).filter(function(x){return x.alerts.length});
+  var budgetAlerts = withAlerts.filter(function(x){return x.alerts.some(function(a){return a.type==='budget'})});
+  var planningAlerts = withAlerts.filter(function(x){return x.alerts.some(function(a){return a.type==='planning'})});
+  var govAlerts = withAlerts.filter(function(x){return x.alerts.some(function(a){return a.type==='governance'})});
+  var openDecisions = D.filter(function(d){return ['To Decide','Blocked'].indexOf(d.status)>=0});
+  var nextSteerco = D.filter(function(d){return d.next_steerco && d.status!=='Decided'});
+  var escalations = D.filter(function(d){return d.status==='Escalated'});
+  var overdueTriage = I.filter(triageOverdue);
+  var highlights = D.filter(function(d){return d.status==='Decided'&&d.outcome==='Go'}).slice(0,4).map(function(d){return '✅ Go decision: '+d.title})
+    .concat(I.filter(function(i){return i.stage==='Converted'}).slice(0,3).map(function(i){return '🚀 '+i.idea_id+' converted to project '+i.linked_project_id}))
+    .concat(completed.slice(0,3).map(function(p){return '🏁 '+p.project_name+' closed'}));
+  var activeIdeas = I.filter(function(i){return ACTIVE_STAGES.indexOf(i.stage) >= 0});
+  var overdueDecs = openDecisions.filter(function(d){return d.due_date && new Date(d.due_date) < new Date()});
+  var capexTotal = P.reduce(function(s,p){return s + (p.capex_keur || 0)}, 0);
+  var budgetTotal = P.reduce(function(s,p){return s + (p.current_year_budget || 0)}, 0);
+  var noBudget = P.filter(function(p){return p.capex_keur == null && p.current_year_budget == null});
+  var pillarCost = {};
+  P.forEach(function(p){
+    var k = p.digital_pillar || 'Unassigned';
+    var e = pillarCost[k] = pillarCost[k] || { n:0, capex:0, budget:0, nodata:0 };
+    e.n++; e.capex += (p.capex_keur || 0); e.budget += (p.current_year_budget || 0);
+    if (p.capex_keur == null && p.current_year_budget == null) e.nodata++;
+  });
+  var pillarRows = Object.keys(pillarCost).sort();
+  function alertLine(x, type, color, label) {
+    return html`<div key=${x.p.id+type} class="alert-line"><${Badge} color=${color}>${label}<//>
+      <span>${x.p.project_id} ${x.p.project_name}</span>
+      <span class="muted small">${x.alerts.filter(function(a){return a.type===type}).map(function(a){return a.msg}).join('; ')}</span></div>`;
+  }
+  return html`<div>
+    <div class="topbar">
+      <div><h1>Cockpit</h1><p class="muted small mb0">Exception-based view — decisions, alerts, priorities. Target: SteerCo pack in under 30 min.</p></div>
+      <div class="no-print" style="display:flex;gap:8px">
+        <button class="btn" onClick=${function(){exportSteercoPPT(I, P, D, chMap)}}>📤 Export PPT pack</button>
+        <button class="btn secondary" onClick=${function(){window.print()}}>🖨 Print</button>
+      </div>
+    </div>
+    <div class="filters no-print">
+      <select value=${cf.pillar} onChange=${function(e){cfl[1]({ pillar:e.target.value, stage:cf.stage })}}>
+        <option value="">All pillars</option>
+        ${(function(){
+          var s = {}; var out = [];
+          (ideas.data||[]).forEach(function(i){ var k=i.digital_pillar||'Unassigned'; if(!s[k]){s[k]=1;out.push(k);} });
+          (projects.data||[]).forEach(function(p){ var k=p.digital_pillar||'Unassigned'; if(!s[k]){s[k]=1;out.push(k);} });
+          return out.sort().map(function(pl){return html`<option key=${pl}>${pl}</option>`});
+        })()}
+      </select>
+      <select value=${cf.stage} onChange=${function(e){cfl[1]({ pillar:cf.pillar, stage:e.target.value })}}>
+        <option value="">All stages</option>
+        ${COCKPIT_STAGES.map(function(s){return html`<option key=${s}>${s}</option>`})}
+      </select>
+      ${(cf.pillar || cf.stage) && html`<button class="btn secondary small" onClick=${function(){cfl[1]({pillar:'',stage:''})}}>Clear filters</button>`}
+      ${(cf.pillar || cf.stage) && html`<span class="small muted">Filters apply to KPIs, cost and pipeline (decisions & escalations stay global).</span>`}
+    </div>
+    <div class="grid cols-4">
+      <div class="card kpi"><div class="num">${activeIdeas.length}</div><div class="lbl">Active ideas (L0→G1)</div></div>
+      <div class="card kpi"><div class="num" style=${overdueDecs.length ? 'color:var(--red)' : ''}>${openDecisions.length}</div>
+        <div class="lbl">Open decisions${overdueDecs.length ? ' · ' + overdueDecs.length + ' overdue' : ''}</div></div>
+      <div class="card kpi"><div class="num">${activeP.length}</div><div class="lbl">Active projects</div></div>
+      <div class="card kpi"><div class="num" style="color:var(--green)">${completed.length}</div><div class="lbl">Closed projects</div></div>
+    </div>
+    <div class="grid cols-2">
+      <div class="card">
+        <h2>🚨 Escalations</h2>
+        ${escalations.map(function(d){return html`<div key=${d.id} class="alert-line"><${Badge} color="red">Escalated<//><span>${d.title}</span></div>`})}
+        ${!escalations.length && html`<p class="muted">None.</p>`}
+      </div>
+      <div class="card">
+        <h2>🌟 Positive highlights</h2>
+        ${highlights.length ? highlights.map(function(hl,i){return html`<div key=${i} class="alert-line"><span>${hl}</span></div>`})
+          : html`<p class="muted">Nothing yet — they will appear as decisions are taken and initiatives convert.</p>`}
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <h2 class="mb0">💰 Cost control</h2>
+        ${noBudget.length > 0 && html`<${Badge} color="red">${noBudget.length} project(s) without budget data<//>`}
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-top:10px">
+        <div class="kpi"><div class="num">${Math.round(capexTotal)}</div><div class="lbl">Total CAPEX (k€)</div></div>
+        <div class="kpi"><div class="num">${Math.round(budgetTotal)}</div><div class="lbl">Current year budget (k€)</div></div>
+        <div class="kpi"><div class="num" style=${noBudget.length ? 'color:var(--red)' : 'color:var(--green)'}>${noBudget.length}</div><div class="lbl">No budget data</div></div>
+      </div>
+      <table class="data" style="margin-top:6px">
+        <thead><tr><th>Digital pillar</th><th>Projects</th><th>CAPEX k€</th><th>Y budget k€</th><th>No data</th></tr></thead>
+        <tbody>${pillarRows.map(function(k){
+          var e = pillarCost[k];
+          var open = expPillar[0] === k;
+          var rows = [html`<tr key=${k} onClick=${function(){expPillar[1](open ? null : k)}} style="cursor:pointer">
+            <td>${open ? '▾' : '▸'} ${k}</td><td>${e.n}</td><td>${Math.round(e.capex)}</td><td>${Math.round(e.budget)}</td>
+            <td>${e.nodata ? html`<${Badge} color="red">${e.nodata}<//>` : '—'}</td></tr>`];
+          if (open) {
+            P.filter(function(p){return (p.digital_pillar||'Unassigned') === k}).forEach(function(p){
+              var noData = p.capex_keur == null && p.current_year_budget == null;
+              rows.push(html`<tr key=${k + p.id} style="background:#fafbfd">
+                <td style="padding-left:26px"><${A} href=${'/projects/'+p.id}>${p.project_id} ${p.project_name}<//></td>
+                <td class="small">${p.current_stage || '—'}</td>
+                <td>${p.capex_keur != null ? p.capex_keur : html`<${Badge} color="red">?<//>`}</td>
+                <td>${p.current_year_budget != null ? p.current_year_budget : html`<${Badge} color="red">?<//>`}</td>
+                <td>${noData ? html`<${Badge} color="red">no data<//>` : '—'}</td></tr>`);
+            });
+          }
+          return rows; })}
+        </tbody></table>
+    </div>
+    <div class="card">
+      <h2>🗺 Portfolio pipeline — ideas & projects by pillar</h2>
+      <${PipelineChart} ideas=${I} projects=${P} chMap=${chMap} />
+    </div>
+    <div class="grid cols-2">
+      <div class="card">
+        <h2>⚖️ Open decisions for next committees</h2>
+        ${COMMITTEES.map(function(c){
+          var rows = openDecisions.filter(function(d){return d.committee_target===c});
+          return html`<div key=${c} style="margin-bottom:10px">
+            <h3 class="muted small">${c} (${rows.length})</h3>
+            ${rows.slice(0,6).map(function(d){
+              return html`<div key=${d.id} class="alert-line">
+                <${Badge} color=${d.status==='Blocked'?'red':'amber'}>${d.status}<//>
+                <span>${d.title}</span>
+                <span class="muted small">${d.due_date?'due '+fmtDate(d.due_date):''} ${d.recommendation?'· reco: '+d.recommendation:''}</span></div>`; })}
+            ${!rows.length && html`<p class="muted small">None.</p>`}
+          </div>`; })}
+        ${nextSteerco.length > 0 && html`<p class="small"><${Badge} color="purple">Next SteerCo agenda<//> ${nextSteerco.length} item(s) flagged — <${A} href="/decisions">view<//></p>`}
+      </div>
+      <div>
+        <div class="card">
+          <h2>⚠️ Alerts</h2>
+          ${budgetAlerts.map(function(x){return alertLine(x,'budget','red','Budget')})}
+          ${planningAlerts.map(function(x){return alertLine(x,'planning','amber','Planning')})}
+          ${overdueTriage.map(function(i){
+            return html`<div key=${i.id} class="alert-line"><${Badge} color="amber">Triage<//>
+              <span><${A} href=${'/ideas/'+i.id}>${i.idea_id} ${i.title}<//></span>
+              <span class="muted small">waiting too long in triage</span></div>`; })}
+          ${govAlerts.map(function(x){return alertLine(x,'governance','gray','Governance')})}
+          ${!withAlerts.length && !overdueTriage.length && html`<p class="muted">No alerts. 🎉</p>`}
+        </div>
+
+      </div>
+    </div>
+  </div>`;
+}
+
+
+/* ================= Reviews (by pillar / lead) ================= */
+function ReviewsPage() {
+  var projects = useAsync(api.listProjects, []);
+  var ideas = useAsync(api.listIdeas, []);
+  var chartersL = useAsync(api.listChartersLight, []);
+  if (projects.loading || ideas.loading) return html`<p>Loading…</p>`;
+  var P = (projects.data||[]).filter(function(p){return (p.current_stage||'').indexOf('G5') !== 0});
+  var atG1 = (ideas.data||[]).filter(function(i){return i.stage === 'G1 Approval'});
+  var pillars = []; var seen = {};
+  P.forEach(function(p){ var k = p.digital_pillar || 'Unassigned'; if (!seen[k]) { seen[k] = true; pillars.push(k); } });
+  atG1.forEach(function(i){ var k = i.digital_pillar || 'Unassigned'; if (!seen[k]) { seen[k] = true; pillars.push(k); } });
+  pillars.sort();
+  return html`<div>
+    <div class="topbar">
+      <div><h1>Reviews</h1>
+      <p class="muted small mb0">Pillar SteerCo preparation — projects grouped by pillar and lead, with initiatives awaiting G1.</p></div>
+      <button class="btn secondary no-print" onClick=${function(){window.print()}}>🖨 Print</button>
+    </div>
+    ${!pillars.length && html`<div class="card"><p class="muted">No active projects or G1 initiatives yet.</p></div>`}
+    ${pillars.map(function(pillar) {
+      var inP = P.filter(function(p){return (p.digital_pillar||'Unassigned') === pillar});
+      var g1 = atG1.filter(function(i){return (i.digital_pillar||'Unassigned') === pillar});
+      var leads = []; var ls = {};
+      inP.forEach(function(p){ var k = p.project_lead || 'No lead assigned'; if (!ls[k]) { ls[k] = true; leads.push(k); } });
+      leads.sort();
+      var chMap = charterMap(chartersL.data);
+      var redCount = inP.filter(function(p){return projectAlerts(p, !!chMap[p.project_id]).length > 0}).length;
+      return html`<div class="card" key=${pillar}>
+        <h2>${pillar} <span class="muted small" style="font-weight:400">· ${inP.length} project(s)${redCount ? ' · ' : ''}${redCount ? html`<${Badge} color="red">${redCount} with alerts<//>` : ''}</span></h2>
+        ${g1.length > 0 && html`<div style="margin-bottom:10px">
+          <h3 class="muted small">Awaiting G1 decision</h3>
+          ${g1.map(function(i){
+            return html`<div key=${i.id} class="alert-line"><${Badge} color="purple">G1<//>
+              <span><${A} href=${'/ideas/'+i.id}>${i.idea_id} ${i.title}<//></span>
+              <span class="muted small">${i.committee_target || 'committee TBD'}</span></div>`; })}
+        </div>`}
+        ${leads.map(function(lead) {
+          var its = inP.filter(function(p){return (p.project_lead||'No lead assigned') === lead});
+          return html`<div key=${lead} style="margin-bottom:8px;border-top:1px solid var(--border);padding-top:8px">
+            <h3 class="small" style="margin-bottom:4px">${lead} <span class="muted" style="font-weight:400">· ${its.length}</span></h3>
+            ${its.map(function(p) {
+              var alerts = projectAlerts(p, !!chMap[p.project_id]);
+              return html`<div key=${p.id} class="alert-line">
+                <span style="min-width:70px" class="muted small">${p.project_id}</span>
+                <span><${A} href=${'/projects/'+p.id}>${p.project_name}<//></span>
+                <${Badge} color="gray">${p.current_stage || '?'}<//>
+                ${isPriorityProject(p) && html`<${Badge} color="red">P<//>`}
+                ${isQuickWinProject(p) && html`<${Badge} color="green">QW<//>`}
+                ${alerts.map(function(a, k){
+                  return html`<${Badge} key=${k} color=${a.type === 'budget' ? 'red' : a.type === 'planning' ? 'amber' : 'gray'}>${a.msg}<//>`; })}
+              </div>`; })}
+          </div>`; })}
+        ${!inP.length && html`<p class="muted small">No active projects in this pillar.</p>`}
+      </div>`; })}
+  </div>`;
+}
+
+/* ================= Notifications & Admin ================= */
+function NotificationsPage(p) {
+  var notifs = useAsync(api.listNotifications, []);
+  function markAll(){ api.markAllRead().then(function(){ notifs.reload(); p.refreshUnread(); }); }
+  function markOne(id){ api.markNotificationRead(id).then(function(){ notifs.reload(); p.refreshUnread(); }); }
+  if (notifs.loading) return html`<p>Loading…</p>`;
+  var list = notifs.data||[];
+  return html`<div style="max-width:800px">
+    <div class="topbar"><h1>Notifications</h1>
+      ${list.some(function(n){return !n.read}) && html`<button class="btn secondary" onClick=${markAll}>Mark all read</button>`}</div>
+    <div class="card">
+      ${list.map(function(n){
+        return html`<div key=${n.id} class="alert-line" style="opacity:${n.read?0.55:1}">
+          <${Badge} color=${n.read?'gray':'blue'}>${n.type}<//>
+          <span>${n.message}</span>
+          <span class="muted small">${fmtDateTime(n.created_at)}</span>
+          ${!n.read && html`<button class="btn secondary small" onClick=${function(){markOne(n.id)}}>✓</button>`}</div>`; })}
+      ${!list.length && html`<p class="muted">No notifications.</p>`}
+    </div>
+  </div>`;
+}
+function AdminPage(p) {
+  var profiles = useAsync(api.listProfiles, []);
+  var refs = useAsync(api.listReference, []);
+  var settings = useAsync(api.getSettings, []);
+  var er = useState(null), bz = useState(false);
+  var thr = useState(null), sla = useState(null);
+  var newVal = useState({ pillar:'', function:'', value_type:'' });
+  if (profiles.loading || refs.loading) return html`<p>Loading…</p>`;
+  var R = refs.data || [];
+  function sVal(key, fallback) {
+    var row = (settings.data || []).find(function(s){ return s.key === key; });
+    return row ? Number(row.value) : fallback;
+  }
+  var thrVal = thr[0] === null ? sVal('gate_ready_threshold', 80) : thr[0];
+  var slaVal = sla[0] === null ? sVal('triage_sla_days', 7) : sla[0];
+
+  function run(promise) {
+    bz[1](true); er[1](null);
+    return promise.then(function(){ refs.reload(); settings.reload(); if (p.onRefChange) p.onRefChange(); })
+      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+  }
+  function setRole(id, role){ api.updateProfileRole(id, role).then(profiles.reload).catch(function(e){ er[1](e.message); }); }
+  function addRef(cat) {
+    var v = (newVal[0][cat] || '').trim();
+    if (!v) return;
+    var maxSort = R.filter(function(r){ return r.category === cat; })
+      .reduce(function(m, r){ return Math.max(m, r.sort_order); }, 0);
+    run(api.addReference(cat, v, maxSort + 1)).then(function(){
+      newVal[1](Object.assign({}, newVal[0], (function(){ var o = {}; o[cat] = ''; return o; })()));
+    });
+  }
+  function renameRef(r) {
+    var nv = window.prompt('New name for "' + r.value + '":', r.value);
+    if (!nv || nv.trim() === r.value) return;
+    var prop = window.confirm('Also update existing ideas / projects / documents that use "' + r.value + '"?\nOK = propagate, Cancel = keep old name on existing records.');
+    run(api.renameReference(r.category, r.value, nv.trim(), prop));
+  }
+  function saveSettings() {
+    run(Promise.all([
+      api.setSetting('gate_ready_threshold', Number(thrVal) || 80),
+      api.setSetting('triage_sla_days', Number(slaVal) || 7) ]));
+  }
+  function refSection(cat, title, note) {
+    var rows = R.filter(function(r){ return r.category === cat; });
+    return html`<div class="card" key=${cat}>
+      <h2>${title}</h2>
+      ${note && html`<p class="small muted" style="margin-top:0">${note}</p>`}
+      <table class="data"><tbody>
+        ${rows.map(function(r){
+          return html`<tr key=${r.id} style=${r.active ? '' : 'opacity:.5'}>
+            <td>${r.value}</td>
+            <td style="width:80px">${r.active ? html`<${Badge} color="green">active<//>` : html`<${Badge} color="gray">inactive<//>`}</td>
+            <td style="width:170px;white-space:nowrap">
+              <button class="btn secondary small" onClick=${function(){renameRef(r)}} disabled=${bz[0]}>Rename</button>${' '}
+              <button class="btn secondary small" onClick=${function(){run(api.setReferenceActive(r.id, !r.active))}} disabled=${bz[0]}>
+                ${r.active ? 'Deactivate' : 'Reactivate'}</button>
+            </td></tr>`; })}
+      </tbody></table>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <input type="text" placeholder="Add new…" value=${newVal[0][cat]}
+          style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:7px"
+          onInput=${function(e){ newVal[1](Object.assign({}, newVal[0], (function(){ var o = {}; o[cat] = e.target.value; return o; })())); }}
+          onKeyDown=${function(e){ if (e.key === 'Enter') addRef(cat); }} />
+        <button class="btn small" onClick=${function(){addRef(cat)}} disabled=${bz[0]}>+ Add</button>
+      </div>
+    </div>`;
+  }
+  return html`<div style="max-width:860px">
+    <div class="topbar"><h1>Administration</h1></div>
+    ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+    <div class="card">
+      <h2>Users & roles</h2>
+      <p class="muted small" style="margin-top:0">Roles drive permissions (enforced server-side). The four roles are fixed by design — assignment is done here.</p>
+      <table class="data">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th></tr></thead>
+        <tbody>${(profiles.data||[]).map(function(pr){
+          return html`<tr key=${pr.id}><td>${pr.name}</td><td class="small">${pr.email}</td>
+            <td><select value=${pr.role} onChange=${function(e){setRole(pr.id, e.target.value)}}
+              style="padding:5px 8px;border:1px solid var(--border);border-radius:6px">
+              ${ROLES.map(function(r){return html`<option key=${r.value} value=${r.value}>${r.label}</option>`})}
+            </select></td>
+            <td>${pr.active ? html`<${Badge} color="green">active<//>` : html`<${Badge} color="gray">inactive<//>`}</td></tr>`; })}
+        </tbody></table>
+    </div>
+    <div class="card">
+      <h2>Governance settings</h2>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+        <${Field} label="Gate-ready threshold (%)" hint="required completeness of BC & Charter to pass G1">
+          <input type="number" min="10" max="100" value=${thrVal} onInput=${function(e){thr[1](e.target.value)}} /><//>
+        <${Field} label="Triage alert delay (days)" hint="ideas waiting longer are flagged in the Cockpit">
+          <input type="number" min="1" max="90" value=${slaVal} onInput=${function(e){sla[1](e.target.value)}} /><//>
+      </div>
+      <button class="btn" onClick=${saveSettings} disabled=${bz[0]}>Save settings</button>
+    </div>
+    ${refSection('pillar', 'Digital pillars', 'Renaming can propagate to existing ideas and projects. Deactivated values disappear from forms but remain visible on historical records.')}
+    ${refSection('function', 'Impacted functions', null)}
+    ${refSection('value_type', 'Expected value types', null)}
+  </div>`;
+}
+
+/* ================= App shell + router ================= */
+function App() {
+  var ss = useState(undefined), session = ss[0];
+  var pf = useState(null), profile = pf[0];
+  var un = useState(0), unread = un[0];
+  var route = useRoute();
+  useEffect(function(){
+    api.getSession().then(function(s){ ss[1](s || null); });
+    var sub = api.onAuthChange(function(s){ ss[1](s || null); });
+    return function(){ sub.data.subscription.unsubscribe(); };
+  }, []);
+  var rt = useState(0);
+  function loadReference() {
+    Promise.all([api.listReference().catch(function(){return []}), api.getSettings().catch(function(){return []})])
+      .then(function(res){ applyReference(res[0], res[1]); rt[1](function(x){return x+1}); });
+  }
+  useEffect(function(){
+    if (session) {
+      api.getMyProfile().then(pf[1]).catch(function(){ pf[1](null); });
+      api.listNotifications().then(function(ns){ un[1](ns.filter(function(n){return !n.read}).length); }).catch(function(){});
+      loadReference();
+    } else pf[1](null);
+  }, [session]);
+  function refreshUnread(){
+    api.listNotifications().then(function(ns){ un[1](ns.filter(function(n){return !n.read}).length); }).catch(function(){});
+  }
+  if (SUPABASE_URL.indexOf('YOUR-PROJECT') >= 0) {
+    return html`<div style="padding:40px;max-width:640px;margin:auto">
+      <h1>Configuration needed</h1>
+      <p>Open this HTML file in a text editor and set <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> at the top of the first script block (values from your Supabase project: Settings → API).</p>
+    </div>`;
+  }
+  if (session === undefined) return html`<div style="padding:40px">Loading…</div>`;
+  if (!session) return html`<${Login} />`;
+  if (!profile) return html`<div style="padding:40px">Loading profile…</div>`;
+  var isPMTT = ['program_manager','transformation_team'].indexOf(profile.role) >= 0;
+  var isPM = profile.role === 'program_manager';
+  var auth = { session:session, profile:profile, isPMTT:isPMTT, isPM:isPM };
+
+  var m;
+  var page;
+  if (route === '/' ) { nav(isPMTT ? '/cockpit' : '/ideas'); page = html`<div />`; }
+  else if (route === '/cockpit') page = html`<${CockpitPage} />`;
+  else if (route === '/ideas') page = html`<${IdeationBoard} auth=${auth} />`;
+  else if (route === '/ideas/new') page = html`<${IdeaForm} profile=${profile} />`;
+  else if ((m = route.match(/^\/ideas\/([^/]+)\/business-case$/))) page = html`<${BCEditorPage} id=${m[1]} auth=${auth} />`;
+  else if ((m = route.match(/^\/ideas\/([^/]+)\/charter$/))) page = html`<${CharterEditorPage} id=${m[1]} auth=${auth} />`;
+  else if ((m = route.match(/^\/ideas\/([^/]+)$/))) page = html`<${IdeaDetail} id=${m[1]} auth=${auth} />`;
+  else if (route === '/decisions') page = html`<${DecisionLog} auth=${auth} />`;
+  else if (route === '/reviews') page = html`<${ReviewsPage} />`;
+  else if ((m = route.match(/^\/projects\/([^/]+)$/))) page = html`<${ProjectDetailPage} id=${m[1]} auth=${auth} />`;
+  else if (route === '/projects') page = html`<${ProjectsPage} />`;
+  else if (route === '/import-export') page = html`<${ImportExportPage} />`;
+  else if (route === '/notifications') page = html`<${NotificationsPage} refreshUnread=${refreshUnread} />`;
+  else if (route === '/admin') page = html`<${AdminPage} onRefChange=${loadReference} />`;
+  else page = html`<p>Not found. <${A} href="/">Home<//></p>`;
+
+  function navLink(href, label) {
+    var active = route === href || (href !== '/' && route.indexOf(href) === 0 && href !== '/ideas') || (href === '/ideas' && (route === '/ideas' || /^\/ideas\/(?!new)/.test(route)));
+    return html`<a href=${'#'+href} class=${active ? 'active' : ''}>${label}</a>`;
+  }
+  return html`<div class="app">
+    <aside class="sidebar">
+      <div class="brand">Digitalization<br />Program Cockpit</div>
+      <nav>
+        ${isPMTT && navLink('/cockpit','📊 Cockpit')}
+        ${navLink('/ideas','💡 Ideation Board')}
+        ${navLink('/ideas/new','➕ Submit Idea')}
+        ${isPMTT && navLink('/decisions','⚖️ Decision Log')}
+        ${isPMTT && navLink('/reviews','🧭 Reviews')}
+        ${(isPMTT || profile.role==='project_lead') && navLink('/projects','📁 Projects')}
+        ${isPMTT && navLink('/import-export','🔄 SmartSheet I/O')}
+        ${html`<a href="#/notifications" class=${route==='/notifications'?'active':''}>🔔 Notifications${unread > 0 && html`<span class="notif-dot">${unread}</span>`}</a>`}
+        ${isPM && navLink('/admin','⚙️ Administration')}
+      </nav>
+      <div class="foot">
+        ${profile.name}<br />
+        <span style="text-transform:capitalize">${profile.role.replace(/_/g,' ')}</span><br />
+        <a style="color:#8892ab" onClick=${function(){api.signOut()}}>Sign out</a>
+      </div>
+    </aside>
+    <main class="main">${page}</main>
+  </div>`;
+}
+render(h(App), document.getElementById('root'));
+</script>
+</body>
+</html>
