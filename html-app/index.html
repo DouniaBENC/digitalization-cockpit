@@ -79,6 +79,28 @@ table.data tr:hover td{background:#fafbfd}
 .muted{color:var(--muted)}.small{font-size:12px}.mb0{margin-bottom:0}
 .bubble-wrap{position:relative}
 .bubble-tip{position:absolute;background:#101a33;color:#fff;padding:6px 10px;border-radius:7px;font-size:12px;pointer-events:none;z-index:5}
+.landing{min-height:100vh;background:#101a33;color:#dbe2f2}
+.landing .wrap{max-width:980px;margin:0 auto;padding:48px 24px}
+.landing .kicker{font-size:12.5px;letter-spacing:1.5px;text-transform:uppercase;color:#7f8db0;margin:0 0 10px}
+.landing h1{font-size:34px;color:#fff;margin:0 0 12px;line-height:1.2}
+.landing .sub{font-size:16px;color:#9fabc8;margin:0 0 26px;max-width:640px}
+.landing .cta-row{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:44px}
+.landing .btn.big{padding:13px 24px;font-size:15px}
+.landing h2{color:#fff;font-size:18px;margin:0 0 14px}
+.landing .lcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin-bottom:38px}
+.landing .lcard{background:#18233f;border:1px solid #24304f;border-radius:10px;padding:14px}
+.landing .lcard .ic{font-size:22px}
+.landing .lcard b{color:#fff;font-size:13.5px;display:block;margin:6px 0 4px}
+.landing .lcard p{font-size:12.5px;color:#9fabc8;margin:0;line-height:1.45}
+.stepper{display:flex;margin:14px 0 10px}
+.step{flex:1;text-align:center;position:relative;font-size:11.5px;color:var(--muted);min-width:60px}
+.step .bar{position:absolute;top:10px;left:-50%;width:100%;height:3px;background:#e2e5ea}
+.step:first-child .bar{display:none}
+.step.done .bar,.step.current .bar{background:var(--green)}
+.step .dot{width:22px;height:22px;border-radius:50%;background:#fff;border:2px solid #cfd4de;color:var(--muted);margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;position:relative}
+.step.done .dot{background:var(--green);border-color:var(--green);color:#fff}
+.step.current .dot{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.step.current{color:var(--accent);font-weight:700}
 @media print{.sidebar,.topbar,.no-print{display:none!important}.main{padding:0;max-width:none}body{background:#fff}.card{border:none;page-break-inside:avoid}}
 </style>
 </head>
@@ -251,6 +273,8 @@ var api = {
   onAuthChange: function(cb){ return sb.auth.onAuthStateChange(function(_e,s){ cb(s); }); },
   signIn: function(email,pw){ return sb.auth.signInWithPassword({email:email,password:pw}).then(one); },
   signUp: function(email,pw,name){ return sb.auth.signUp({email:email,password:pw,options:{data:{name:name}}}).then(one); },
+  signInMagic: function(email){ return sb.auth.signInWithOtp({ email: email,
+    options: { emailRedirectTo: location.origin + location.pathname } }).then(one); },
   signOut: function(){ return sb.auth.signOut(); },
   getMyProfile: function(){ return api.getSession().then(function(s){
     if (!s) return null;
@@ -281,6 +305,10 @@ var api = {
   upsertProjects: function(rows){ return sb.from('projects').upsert(rows,{onConflict:'project_id'}).select().then(one); },
   updateProject: function(id,f){ return sb.from('projects').update(f).eq('id',id).select().single().then(one); },
   listChartersLight: function(){ return sb.from('project_charters').select('id, idea_id, charter_id, version, status, smartsheet_project_id').then(one); },
+  listMyDocs: function(){ return Promise.all([
+    sb.from('business_cases').select('*').then(one),
+    sb.from('project_charters').select('*').then(one)
+  ]).then(function(r){ return { bcs: r[0], charters: r[1] }; }); },
   listReference: function(){ return sb.from('app_reference').select('*').order('category').order('sort_order').order('value').then(one); },
   addReference: function(cat, value, sort){ return sb.from('app_reference').insert({category:cat, value:value, sort_order:sort}).select().then(one); },
   setReferenceActive: function(id, active){ return sb.from('app_reference').update({active:active}).eq('id',id).select().then(one); },
@@ -420,10 +448,16 @@ function useAsync(fn, deps) {
   return { loading:state.loading, data:state.data, error:state.error, reload:reload };
 }
 /* hash router */
+function cleanHash() {
+  var hh = location.hash.slice(1) || '/';
+  // Supabase magic-link / recovery callbacks put tokens in the hash — not a route.
+  if (hh.indexOf('access_token=') >= 0 || hh.indexOf('error_description=') >= 0 || hh.indexOf('error_code=') >= 0) return '/';
+  return hh;
+}
 function useRoute() {
-  var st = useState(location.hash.slice(1) || '/');
+  var st = useState(cleanHash());
   useEffect(function(){
-    function onHash(){ st[1](location.hash.slice(1) || '/'); }
+    function onHash(){ st[1](cleanHash()); }
     window.addEventListener('hashchange', onHash);
     return function(){ window.removeEventListener('hashchange', onHash); };
   }, []);
@@ -433,42 +467,91 @@ function nav(path){ location.hash = path; }
 function A(p){ return html`<a href=${'#'+p.href} class=${p.class||''}>${p.children}</a>`; }
 
 /* ================= Login ================= */
-function Login() {
-  var m = useState('signin'), mode = m[0], setMode = m[1];
+function Login(p) {
+  var m = useState(p.initialMode || 'signin'), mode = m[0], setMode = m[1];
   var em = useState(''), pw = useState(''), nm = useState('');
   var er = useState(null), inf = useState(null), bz = useState(false);
   function submit(e) {
     e.preventDefault(); bz[1](true); er[1](null); inf[1](null);
     var pr = mode === 'signin' ? api.signIn(em[0], pw[0])
+      : mode === 'magic' ? api.signInMagic(em[0]).then(function(){ inf[1]('Check your inbox — we sent you a sign-in link. You can close this tab.'); })
       : api.signUp(em[0], pw[0], nm[0]).then(function(){ inf[1]('Account created. If email confirmation is enabled, check your inbox; otherwise sign in.'); setMode('signin'); });
     pr.catch(function(err){ er[1](err.message); }).finally(function(){ bz[1](false); });
   }
+  var sub = mode === 'signup' ? 'Create your account to submit your idea and track it at every step'
+    : mode === 'magic' ? 'No password needed — we email you a one-click sign-in link'
+    : 'Governance preparation & portfolio steering';
   return html`<div class="login-wrap"><div class="login-card">
     <h1 style="margin-bottom:4px">Digitalization Program Cockpit</h1>
-    <p class="muted small" style="margin-top:0">Governance preparation & portfolio steering</p>
+    <p class="muted small" style="margin-top:0">${sub}</p>
     <form onSubmit=${submit}>
       ${mode === 'signup' && html`<div class="field"><label>Name</label><input type="text" value=${nm[0]} onInput=${function(e){nm[1](e.target.value)}} required /></div>`}
       <div class="field"><label>Email</label><input type="email" value=${em[0]} onInput=${function(e){em[1](e.target.value)}} required /></div>
-      <div class="field"><label>Password</label><input type="password" value=${pw[0]} onInput=${function(e){pw[1](e.target.value)}} required /></div>
+      ${mode !== 'magic' && html`<div class="field"><label>Password</label><input type="password" value=${pw[0]} onInput=${function(e){pw[1](e.target.value)}} required /></div>`}
       ${er[0] && html`<p style="color:var(--red);font-size:13px">${er[0]}</p>`}
       ${inf[0] && html`<p style="color:var(--green);font-size:13px">${inf[0]}</p>`}
-      <button class="btn" disabled=${bz[0]} style="width:100%">${mode === 'signin' ? 'Sign in' : 'Create account'}</button>
+      <button class="btn" disabled=${bz[0]} style="width:100%">${mode === 'signin' ? 'Sign in' : mode === 'magic' ? '✉️ Email me a sign-in link' : 'Create account'}</button>
     </form>
     <p class="small" style="text-align:center">
-      ${mode === 'signin'
-        ? html`No account? <a onClick=${function(){setMode('signup')}}>Sign up</a>`
-        : html`Have an account? <a onClick=${function(){setMode('signin')}}>Sign in</a>`}
+      ${mode === 'signin' && html`No account? <a onClick=${function(){setMode('signup')}}>Sign up</a> · <a onClick=${function(){setMode('magic')}}>Sign in without password</a>`}
+      ${mode === 'signup' && html`Have an account? <a onClick=${function(){setMode('signin')}}>Sign in</a> · <a onClick=${function(){setMode('magic')}}>Sign in without password</a>`}
+      ${mode === 'magic' && html`<a onClick=${function(){setMode('signin')}}>← Use a password instead</a>`}
     </p>
+    <p class="small" style="text-align:center;margin-bottom:0"><a onClick=${function(){nav('/welcome')}}>← About the program</a></p>
+  </div></div>`;
+}
+
+/* ================= Public landing (idea submitters) ================= */
+var LANDING_STEPS = [
+  ['💡','Submit your idea','About 5 minutes, in plain language — the problem, who it affects, the benefit you expect.'],
+  ['🔍','We triage it','The Transformation Team checks scope, duplicates and fit within a few days.'],
+  ['🧰','Complete your kit','If qualified, you unlock a guided Business Case & Project Charter (~15 min each), pre-filled from your submission.'],
+  ['⚖️','A committee decides','Your initiative is presented at the right SteerCo. Go, Rework, Hold or No-Go — always with a reason.'],
+  ['🚀','It becomes a project','Approved ideas are converted into official projects. You follow everything from your account.']];
+function LandingPage() {
+  function goSubmit() {
+    try { sessionStorage.setItem('postLoginRoute', '/ideas/new'); } catch(e){}
+    nav('/signup');
+  }
+  return html`<div class="landing"><div class="wrap">
+    <p class="kicker">PWT Digitalization Program</p>
+    <h1>Have an idea to digitalize, simplify or automate your work?</h1>
+    <p class="sub">Submit it in about 5 minutes — then follow it, step by step, all the way to a funded project. No jargon needed: plain language and rough estimates are fine.</p>
+    <div class="cta-row">
+      <button class="btn big" onClick=${goSubmit}>🚀 Submit my idea</button>
+      <a style="color:#9fabc8" onClick=${function(){nav('/login')}}>I already have an account — sign in</a>
+    </div>
+    <h2>How it works</h2>
+    <div class="lcards">
+      ${LANDING_STEPS.map(function(s, i) {
+        return html`<div class="lcard" key=${i}>
+          <span class="ic">${s[0]}</span><b>${(i+1) + '. ' + s[1]}</b><p>${s[2]}</p>
+        </div>`; })}
+    </div>
+    <h2>Why create an account?</h2>
+    <div class="lcards" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr))">
+      <div class="lcard"><span class="ic">🔔</span><b>Follow your idea in real time</b>
+        <p>You are notified at every step — in the app and by email: triage, qualification, committee decision, project kick-off.</p></div>
+      <div class="lcard"><span class="ic">🧰</span><b>Get your starter kit</b>
+        <p>If your idea is qualified, your account gives you access to a guided Business Case and Project Charter to prepare it for the committee.</p></div>
+      <div class="lcard"><span class="ic">⚖️</span><b>Transparent decisions</b>
+        <p>Every outcome comes with a reason, recorded in the governance log. Nothing disappears into a black box.</p></div>
+    </div>
+    <p class="small" style="color:#66708a">Questions? Contact the Digitalization Program team.</p>
   </div></div>`;
 }
 
 /* ================= Idea form ================= */
-function IdeaForm(p) {
-  var st = useState({ title:'', opportunity:'', business_benefits:'', digital_pillar:'', impacted_functions:[],
+function initIdeaForm() {
+  return { title:'', opportunity:'', business_benefits:'', digital_pillar:'', impacted_functions:[],
     expected_value_types:[], estimated_value:'', urgency:'', risks_challenges:'', interface_systems:'',
-    e3_environment:false, e3_economy:false, e3_engagement:false });
+    e3_environment:false, e3_economy:false, e3_engagement:false };
+}
+function IdeaForm(p) {
+  var st = useState(initIdeaForm());
   var f = st[0]; function set(k,v){ st[1](function(s){ var n = Object.assign({},s); n[k]=v; return n; }); }
   var er = useState(null), bz = useState(false);
+  var dn = useState(null), submitted = dn[0];
   function submit(e) {
     e.preventDefault();
     if (!f.e3_environment && !f.e3_economy && !f.e3_engagement && !f.expected_value_types.length) {
@@ -477,8 +560,28 @@ function IdeaForm(p) {
     bz[1](true); er[1](null);
     api.createIdea(Object.assign({}, f, { digital_pillar:f.digital_pillar||null, urgency:f.urgency||null,
       requester_id:p.profile.id, stage:'L0 Submitted' }))
-      .then(function(idea){ nav('/ideas/'+idea.id); })
+      .then(function(idea){ dn[1](idea); bz[1](false); window.scrollTo(0,0); })
       .catch(function(err){ er[1](err.message); bz[1](false); });
+  }
+  if (submitted) {
+    return html`<div style="max-width:640px">
+      <div class="card" style="text-align:center;padding:36px 24px">
+        <div style="font-size:44px">🎉</div>
+        <h1 style="font-size:22px">Your idea has been submitted!</h1>
+        <p>Reference: <b>${submitted.idea_id}</b> — keep it for your records.</p>
+        <p class="muted small" style="max-width:440px;margin:0 auto 6px">What happens next:</p>
+        <ol style="text-align:left;font-size:13.5px;color:var(--muted);max-width:440px;margin:0 auto 18px;padding-left:20px">
+          <li>The Transformation Team reviews it within a few days.</li>
+          <li>You are notified at every step — here and by email.</li>
+          <li>If it is qualified, you unlock your starter kit: a guided Business Case and Project Charter.</li>
+        </ol>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+          <button class="btn" onClick=${function(){nav('/my-ideas')}}>📌 Track my ideas</button>
+          <button class="btn secondary" onClick=${function(){nav('/ideas/'+submitted.id)}}>View details</button>
+          <button class="btn secondary" onClick=${function(){dn[1](null); st[1](initIdeaForm());}}>Submit another idea</button>
+        </div>
+      </div>
+    </div>`;
   }
   return html`<div style="max-width:760px">
     <div class="topbar"><h1>Submit a Digitalization Idea</h1></div>
@@ -663,6 +766,84 @@ function BubbleChart(p) {
     </svg></div>`;
 }
 
+/* ================= Idea journey stepper + My Ideas ================= */
+var JOURNEY_STEPS = [
+  { stage:'L0 Submitted', label:'Submitted' },
+  { stage:'L0 Triage', label:'Triage' },
+  { stage:'L1 Qualified', label:'Qualified' },
+  { stage:'L2 BC/Charter', label:'Your kit' },
+  { stage:'G1 Approval', label:'Committee' },
+  { stage:'Converted', label:'Project' }];
+function journeyIndex(stage) {
+  for (var k = 0; k < JOURNEY_STEPS.length; k++) if (JOURNEY_STEPS[k].stage === stage) return k;
+  return -1;
+}
+function IdeaStepper(p) {
+  var i = p.idea;
+  if (i.stage === 'Rejected' || i.stage === 'Hold') {
+    var rej = i.stage === 'Rejected';
+    return html`<div style="background:${rej ? 'var(--red-soft)' : '#eef0f4'};border-left:4px solid ${rej ? 'var(--red)' : 'var(--muted)'};border-radius:8px;padding:10px 14px;margin:10px 0;font-size:13px">
+      <b>${rej ? '❌ Not selected' : '⏸ On hold'}</b>
+      ${i.status_reason ? html`<span> — ${i.status_reason}</span>` : ''}
+      ${!rej && html`<span class="muted small"> · The idea can be reopened later.</span>`}
+    </div>`;
+  }
+  var idx = journeyIndex(i.stage);
+  return html`<div class="stepper">
+    ${JOURNEY_STEPS.map(function(s, k) {
+      var cls = k < idx || (k === idx && s.stage === 'Converted') ? 'done' : k === idx ? 'current' : '';
+      return html`<div key=${s.label} class="step ${cls}">
+        <div class="bar"></div>
+        <div class="dot">${k < idx || (k === idx && s.stage === 'Converted') ? '✓' : k + 1}</div>
+        ${s.label}
+      </div>`; })}
+  </div>`;
+}
+function MyIdeasPage(p) {
+  var ideas = useAsync(api.listIdeas, []);
+  var docs = useAsync(api.listMyDocs, []);
+  if (ideas.loading || docs.loading) return html`<p>Loading…</p>`;
+  if (ideas.error) return html`<p style="color:var(--red)">${ideas.error.message}</p>`;
+  var mine = (ideas.data || []).filter(function(i){ return i.requester_id === p.auth.profile.id; });
+  var bcs = (docs.data && docs.data.bcs) || [], chs = (docs.data && docs.data.charters) || [];
+  function nextAction(i, bc, ch) {
+    if (i.stage === 'L0 Submitted') return html`<span>⏳ Waiting for triage — the Transformation Team will review it shortly. You will be notified.</span>`;
+    if (i.stage === 'L0 Triage') return html`<span>🔍 Being reviewed by the Transformation Team — no action needed from you right now.</span>`;
+    if (i.stage === 'L1 Qualified' || i.stage === 'L2 BC/Charter') {
+      var bp = bc ? bcCompletenessLean(bc).pct : 0, cp = ch ? chCompletenessLean(ch).pct : 0;
+      return html`<span>🧰 <b>Action needed:</b> complete your starter kit —
+        ${' '}<${A} href=${'/ideas/'+i.id+'/business-case'}>Business Case<//> (${bp}%) and
+        ${' '}<${A} href=${'/ideas/'+i.id+'/charter'}>Project Charter<//> (${cp}%).</span>`;
+    }
+    if (i.stage === 'G1 Approval') return html`<span>⚖️ Awaiting the committee decision (${i.committee_target || 'committee to be confirmed'}). You will be notified of the outcome.</span>`;
+    if (i.stage === 'Converted') return html`<span>🚀 Your idea became project <b>${i.linked_project_id}</b>. Congratulations!</span>`;
+    return null;
+  }
+  return html`<div style="max-width:860px">
+    <div class="topbar"><h1>My Ideas</h1><${A} href="/ideas/new" class="btn">+ Submit idea<//></div>
+    <${HelpGuide} />
+    ${!mine.length && html`<div class="card" style="text-align:center;padding:38px 20px">
+      <div style="font-size:38px">💡</div>
+      <h2>You haven't submitted an idea yet</h2>
+      <p class="muted">It takes about 5 minutes — plain language and rough estimates are fine.</p>
+      <${A} href="/ideas/new" class="btn">🚀 Submit my first idea<//>
+    </div>`}
+    ${mine.map(function(i) {
+      var bc = bcs.filter(function(b){ return b.idea_id === i.id; })[0];
+      var ch = chs.filter(function(c){ return c.idea_id === i.id; })[0];
+      var action = nextAction(i, bc, ch);
+      return html`<div class="card" key=${i.id}>
+        <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start">
+          <div><span class="muted small">${i.idea_id} · submitted ${fmtDate(i.submitted_date)}</span>
+            <h2 style="margin:2px 0 0">${i.title}</h2></div>
+          <${A} href=${'/ideas/'+i.id} class="btn secondary small">View details<//>
+        </div>
+        <${IdeaStepper} idea=${i} />
+        ${action && html`<div style="background:#f7f8fb;border-radius:8px;padding:10px 12px;font-size:13px">${action}</div>`}
+      </div>`; })}
+  </div>`;
+}
+
 /* ================= Idea Detail ================= */
 function Info(p) {
   return html`<div style="margin-bottom:10px">
@@ -732,6 +913,9 @@ function IdeaDetail(p) {
       </div>`}
     </div>
     ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+    <div class="card" style="padding:10px 16px 4px">
+      <${IdeaStepper} idea=${i} />
+    </div>
     <div class="grid cols-2">
       <div>
         <div class="card">
@@ -2208,6 +2392,10 @@ function App() {
   }
   useEffect(function(){
     if (session) {
+      try {
+        var target = sessionStorage.getItem('postLoginRoute');
+        if (target) { sessionStorage.removeItem('postLoginRoute'); nav(target); }
+      } catch(e){}
       api.getMyProfile().then(pf[1]).catch(function(){ pf[1](null); });
       api.listNotifications().then(function(ns){ un[1](ns.filter(function(n){return !n.read}).length); }).catch(function(){});
       loadReference();
@@ -2223,7 +2411,15 @@ function App() {
     </div>`;
   }
   if (session === undefined) return html`<div style="padding:40px">Loading…</div>`;
-  if (!session) return html`<${Login} />`;
+  if (!session) {
+    if (route === '/' || route === '/welcome') return html`<${LandingPage} />`;
+    if (route === '/signup') return html`<${Login} initialMode="signup" />`;
+    if (route !== '/login') {
+      // Deep link (e.g. from an email) — remember it and resume after sign-in.
+      try { sessionStorage.setItem('postLoginRoute', route); } catch(e){}
+    }
+    return html`<${Login} />`;
+  }
   if (!profile) return html`<div style="padding:40px">Loading profile…</div>`;
   var isPMTT = ['program_manager','transformation_team'].indexOf(profile.role) >= 0;
   var isPM = profile.role === 'program_manager';
@@ -2231,8 +2427,11 @@ function App() {
 
   var m;
   var page;
-  if (route === '/' ) { nav(isPMTT ? '/cockpit' : '/ideas'); page = html`<div />`; }
+  if (route === '/' || route === '/welcome' || route === '/login' || route === '/signup') {
+    nav(isPMTT ? '/cockpit' : profile.role === 'requester' ? '/my-ideas' : '/ideas'); page = html`<div />`;
+  }
   else if (route === '/cockpit') page = html`<${CockpitPage} />`;
+  else if (route === '/my-ideas') page = html`<${MyIdeasPage} auth=${auth} />`;
   else if (route === '/ideas') page = html`<${IdeationBoard} auth=${auth} />`;
   else if (route === '/ideas/new') page = html`<${IdeaForm} profile=${profile} />`;
   else if ((m = route.match(/^\/ideas\/([^/]+)\/business-case$/))) page = html`<${BCEditorPage} id=${m[1]} auth=${auth} />`;
@@ -2256,7 +2455,7 @@ function App() {
       <div class="brand">Digitalization<br />Program Cockpit</div>
       <nav>
         ${isPMTT && navLink('/cockpit','📊 Cockpit')}
-        ${navLink('/ideas','💡 Ideation Board')}
+        ${profile.role === 'requester' ? navLink('/my-ideas','🏠 My Ideas') : navLink('/ideas','💡 Ideation Board')}
         ${navLink('/ideas/new','➕ Submit Idea')}
         ${isPMTT && navLink('/decisions','⚖️ Decision Log')}
         ${isPMTT && navLink('/reviews','🧭 Reviews')}
