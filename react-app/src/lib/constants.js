@@ -47,7 +47,7 @@ export const PROJECT_STAGES = [
 export const ROLES = [
   { value: 'requester', label: 'Requester' },
   { value: 'program_manager', label: 'Program Manager' },
-  { value: 'transformation_team', label: 'Transformation Team' },
+  { value: 'transformation_team', label: 'Digital Team' },
   { value: 'project_lead', label: 'Project Lead' },
 ]
 
@@ -56,7 +56,7 @@ export const TRIAGE_SLA_DAYS = 7
 export const ROADMAP_NOTE =
   'AI-guided intake and draft generation are planned for a future release. ' +
   'In the MVP, Business Case v0 and Project Charter v0 are generated from structured ' +
-  'fields and enriched manually by the Program Manager / Transformation Team.'
+  'fields and enriched manually by the Program Manager / Digital Team.'
 
 // Business Case structured sections (spec §10)
 export const BC_SECTIONS = [

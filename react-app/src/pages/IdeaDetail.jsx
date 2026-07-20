@@ -162,7 +162,7 @@ export default function IdeaDetail() {
       {modal === 'l2' && (
         <Modal title="Move to L2 — BC / Charter preparation" onClose={() => setModal(null)}>
           <Checklist items={l2Criteria(i)} />
-          <p className="small muted">The Transformation Team confirms there is enough substance to prepare governance materials.</p>
+          <p className="small muted">The Digital Team confirms there is enough substance to prepare governance materials.</p>
           <button className="btn" onClick={() => moveStage('L2 BC/Charter')} disabled={busy}>Confirm move to L2</button>
         </Modal>
       )}

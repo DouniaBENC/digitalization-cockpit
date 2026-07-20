@@ -2,7 +2,7 @@
 
 Principe : à chaque notification insérée en base pour un utilisateur dont le rôle
 est `requester`, une Edge Function envoie un email via Resend.
-PM / Transformation Team restent en notifications in-app.
+PM / Digital Team restent en notifications in-app.
 
 ## 1. Compte Resend (fournisseur d'email)
 1. Crée un compte gratuit sur https://resend.com (100 emails/jour).

@@ -29,7 +29,7 @@ Sign up in the app, then promote yourself in the Supabase SQL editor:
 update public.profiles set role = 'program_manager' where email = 'you@company.com';
 ```
 After that, manage roles from **Users & Roles** in the app. Roles: Requester,
-Program Manager, Transformation Team, Project Lead — permissions are enforced
+Program Manager, Digital Team, Project Lead — permissions are enforced
 server-side by Postgres RLS (see `schema.sql`), not just hidden in the UI.
 
 ## 2. Deployment

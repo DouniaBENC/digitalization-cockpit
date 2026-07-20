@@ -21,7 +21,7 @@ begin
        and (auth.uid() is null or auth.uid() <> new.requester_id) then
       v_msg := case new.stage
         when 'L0 Triage' then
-          'Your idea ' || new.idea_id || ' is now being reviewed by the Transformation Team.'
+          'Your idea ' || new.idea_id || ' is now being reviewed by the Digital Team.'
         when 'L2 BC/Charter' then
           'Your idea ' || new.idea_id || ' moved to preparation (L2). Please complete your Business Case and Project Charter from the idea page.'
         when 'G1 Approval' then

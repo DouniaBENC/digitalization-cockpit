@@ -1,7 +1,7 @@
 // Supabase Edge Function: notify-email
 // Triggered by a Database Webhook on INSERT into public.notifications.
 // Sends an email (via Resend) to the recipient ONLY if their role is 'requester'
-// — idea owners get emailed at key steps; PM/Transformation Team stay in-app.
+// — idea owners get emailed at key steps; PM/Digital Team stay in-app.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 

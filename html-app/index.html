@@ -136,7 +136,7 @@ var DOC_STATUSES = ['Draft','In Review','Ready for Gate','Approved','Rework'];
 var PROJECT_STAGES = ['S1 (Scoping)','G2 (Business Case)','S2 (Planning)','G3 (Action Plan)','S3 (Execution)','G4 (Implementation)','S4 (Verification)','G5 (Closed)'];
 var ROLES = [
   { value:'requester', label:'Requester' }, { value:'program_manager', label:'Program Manager' },
-  { value:'transformation_team', label:'Transformation Team' }, { value:'project_lead', label:'Project Manager' }];
+  { value:'transformation_team', label:'Digital Team' }, { value:'project_lead', label:'Project Manager' }];
 var TRIAGE_SLA_DAYS = 7;
 var GATE_READY_PCT = 80;
 function applyReference(rows, settings) {
@@ -150,7 +150,7 @@ function applyReference(rows, settings) {
     if (s.key === 'triage_sla_days') TRIAGE_SLA_DAYS = Number(s.value) || 7;
   });
 }
-var ROADMAP_NOTE = 'AI-guided intake and draft generation are planned for a future release. In the MVP, Business Case v0 and Project Charter v0 are generated from structured fields and enriched manually by the Program Manager / Transformation Team.';
+var ROADMAP_NOTE = 'AI-guided intake and draft generation are planned for a future release. In the MVP, Business Case v0 and Project Charter v0 are generated from structured fields and enriched manually by the Program Manager / Digital Team.';
 var BC_SECTIONS = [
   { key:'problem_statement', label:'2. Problem / Opportunity', hint:'What problem are we solving? Who is impacted? Why now?', required:true },
   { key:'proposed_solution', label:'3. Proposed Concept', hint:'Proposed digitalization / AI solution, operating model change', required:true },
@@ -571,7 +571,7 @@ function IdeaForm(p) {
         <p>Reference: <b>${submitted.idea_id}</b> — keep it for your records.</p>
         <p class="muted small" style="max-width:440px;margin:0 auto 6px">What happens next:</p>
         <ol style="text-align:left;font-size:13.5px;color:var(--muted);max-width:440px;margin:0 auto 18px;padding-left:20px">
-          <li>The Transformation Team reviews it within a few days.</li>
+          <li>The Digital Team reviews it within a few days.</li>
           <li>You are notified at every step — here and by email.</li>
           <li>If it is qualified, you unlock your starter kit: a guided Business Case and Project Charter.</li>
         </ol>
@@ -630,7 +630,7 @@ function HelpGuide() {
   if (dm[0]) return html`<p class="small no-print" style="margin-top:-6px"><a onClick=${reopen}>❓ How does the idea process work?</a></p>`;
   var steps = [
     ['💡', 'Submit your idea', 'Takes about 5 minutes. Plain language, no jargon needed — describe the problem, who it affects and the benefit you expect. Estimates and "to be confirmed" are fine.'],
-    ['🔍', 'We triage it', 'The Transformation Team checks scope, duplicates and fit within a few days. You are notified at every step.'],
+    ['🔍', 'We triage it', 'The Digital Team checks scope, duplicates and fit within a few days. You are notified at every step.'],
     ['🧰', 'You complete your kit', 'If your idea is qualified, you get edit access to a guided Business Case and Project Charter (~15 minutes each). They are pre-filled from your submission.'],
     ['⚖️', 'A committee decides', 'Your initiative is presented at the right SteerCo with your documents. Outcome: Go, Rework, Hold or No-Go — always with a reason.'],
     ['🚀', 'It becomes a project', 'Approved ideas are converted into official projects. Follow the status of your idea on this board and in your notifications at any time.'] ];
@@ -807,8 +807,8 @@ function MyIdeasPage(p) {
   var mine = (ideas.data || []).filter(function(i){ return i.requester_id === p.auth.profile.id; });
   var bcs = (docs.data && docs.data.bcs) || [], chs = (docs.data && docs.data.charters) || [];
   function nextAction(i, bc, ch) {
-    if (i.stage === 'L0 Submitted') return html`<span>⏳ Waiting for triage — the Transformation Team will review it shortly. You will be notified.</span>`;
-    if (i.stage === 'L0 Triage') return html`<span>🔍 Being reviewed by the Transformation Team — no action needed from you right now.</span>`;
+    if (i.stage === 'L0 Submitted') return html`<span>⏳ Waiting for triage — the Digital Team will review it shortly. You will be notified.</span>`;
+    if (i.stage === 'L0 Triage') return html`<span>🔍 Being reviewed by the Digital Team — no action needed from you right now.</span>`;
     if (i.stage === 'L1 Qualified' || i.stage === 'L2 BC/Charter') {
       var bp = bc ? bcCompletenessLean(bc).pct : 0, cp = ch ? chCompletenessLean(ch).pct : 0;
       return html`<span>🧰 <b>Action needed:</b> complete your starter kit —
@@ -974,7 +974,7 @@ function IdeaDetail(p) {
       <button class="btn" onClick=${doQualify} disabled=${bz[0]}>Confirm qualification</button><//>`}
     ${modal==='l2' && html`<${Modal} title="Move to L2 — BC / Charter preparation" onClose=${function(){setModal(null)}}>
       <${Checklist} items=${l2Criteria(i)} />
-      <p class="small muted">The Transformation Team confirms there is enough substance to prepare governance materials.</p>
+      <p class="small muted">The Digital Team confirms there is enough substance to prepare governance materials.</p>
       <button class="btn" onClick=${function(){moveStage('L2 BC/Charter')}} disabled=${bz[0]}>Confirm move to L2</button><//>`}
     ${modal==='g1' && html`<${Modal} title="Ready for G1 Approval" onClose=${function(){setModal(null)}}>
       <${Checklist} items=${g1Criteria(i, bc.data, ch.data)} />
@@ -1172,7 +1172,7 @@ var BC_LEAN = {
 };
 var CH_LEAN = {
   titlePrefix: 'Lean Project Charter',
-  guide: 'Target time: 10-15 minutes after the idea is qualified. The Requester provides the business content; the Project Manager and Transformation Team confirm delivery details.',
+  guide: 'Target time: 10-15 minutes after the idea is qualified. The Requester provides the business content; the Project Manager and Digital Team confirm delivery details.',
   sections: [
     { title: '1. Purpose and success', guidance: 'Define what will be different for the business, for whom and by when.',
       fields: [
@@ -1279,7 +1279,7 @@ function ApprovalsPanel(p) {
     .sort(function(a,b){ return new Date(b.decision_date||b.updated_at) - new Date(a.decision_date||a.updated_at); })[0];
   var rows = [
     ['Requester', (p.idea.requester && p.idea.requester.name) || '—', 'Submitted', fmtDate(p.idea.submitted_date)],
-    ['Transformation Team / Program Manager', '—', p.doc.status, fmtDate(p.doc.updated_at)],
+    ['Digital Team / Program Manager', '—', p.doc.status, fmtDate(p.doc.updated_at)],
     ['Decision forum', (committee && committee.committee_target) || p.idea.committee_target || 'To be routed',
       committee ? committee.outcome : 'Pending', committee ? fmtDate(committee.decision_date) : '—'] ];
   return html`<div style="margin-top:8px">
@@ -1354,7 +1354,7 @@ function LeanDocEditor(p) {
     </div>
     <${RoadmapNote} />
     ${isOwnerKit && html`<div class="roadmap-note" style="background:var(--green-soft);border-color:var(--green);color:#14532d">
-      🧰 <b>Idea owner kit:</b> ${cfg.guide} The Transformation Team will review and challenge the content.
+      🧰 <b>Idea owner kit:</b> ${cfg.guide} The Digital Team will review and challenge the content.
     </div>`}
     <div class="card no-print">
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
