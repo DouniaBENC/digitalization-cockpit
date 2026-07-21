@@ -218,7 +218,6 @@ function l1Criteria(i) {
     { label:'Fits a digital pillar or marked "To Be Confirmed"', ok:!!i.digital_pillar },
     { label:'Clear problem / opportunity statement', ok:(i.opportunity||'').length >= 30 },
     { label:'Plausible business benefit', ok:(i.business_benefits||'').length >= 20 },
-    { label:'Identified owner for next-step assessment', ok:!!i.owner_id },
     { label:'Within digitalization scope (triage note if unclear)', ok:true }];
 }
 function l2Criteria(i) {
@@ -745,16 +744,16 @@ function IdeationBoard(p) {
           ${items.map(function(i){return html`<${KCard} key=${i.id} i=${i} />`})}</div>`; })}
     </div>`}
     ${view === 'table' && html`<div class="card" style="overflow-x:auto"><table class="data">
-      <thead><tr><th>ID</th><th>Title</th><th>Stage</th><th>Pillar</th><th>Requester</th><th>Owner</th><th>Flags</th><th>Committee</th><th>Updated</th></tr></thead>
+      <thead><tr><th>ID</th><th>Title</th><th>Stage</th><th>Pillar</th><th>Requester</th><th>Flags</th><th>Committee</th><th>Updated</th></tr></thead>
       <tbody>${filtered.map(function(i){
         return html`<tr key=${i.id}>
           <td><${A} href=${'/ideas/'+i.id}>${i.idea_id}<//></td>
           <td><${A} href=${'/ideas/'+i.id}>${i.title}<//></td>
           <td><${StageBadge} stage=${i.stage} /></td>
-          <td>${i.digital_pillar||'—'}</td><td>${i.requester&&i.requester.name}</td><td>${(i.owner&&i.owner.name)||'—'}</td>
+          <td>${i.digital_pillar||'—'}</td><td>${i.requester&&i.requester.name}</td>
           <td>${i.quick_win&&html`<${Badge} color="green">QW<//> `}${i.priority&&html`<${Badge} color="red">P<//> `}${triageOverdue(i)&&html`<${Badge} color="amber">⏰<//>`}</td>
           <td>${i.committee_target||'—'}</td><td>${fmtDate(i.updated_at)}</td></tr>`; })}
-      ${!filtered.length && html`<tr><td colSpan="9" class="muted">No ideas match the filters.</td></tr>`}
+      ${!filtered.length && html`<tr><td colSpan="8" class="muted">No ideas match the filters.</td></tr>`}
       </tbody></table></div>`}
     ${view === 'archive' && html`<div class="card" style="overflow-x:auto">
       <h2>Archive — rejected & on-hold ideas</h2>
@@ -957,6 +956,8 @@ function IdeaDetail(p) {
       <div>
         <div class="card">
           <h2>Original Submission</h2>
+          <${Info} label="Idea Owner" value=${(i.requester&&i.requester.name)||'—'} />
+          <${Info} label="Idea Owner Email" value=${(i.requester&&i.requester.email)||'—'} />
           <${Info} label="Problem / Opportunity" value=${i.opportunity} multiline=${true} />
           <${Info} label="Business Benefits" value=${i.business_benefits} multiline=${true} />
           <${Info} label="E3 Impact" value=${[i.e3_environment&&'Environment',i.e3_economy&&'Economy',i.e3_engagement&&'Engagement'].filter(Boolean).join(', ')||'—'} />
@@ -1006,7 +1007,6 @@ function IdeaDetail(p) {
     ${modal==='qualify' && html`<${Modal} title="Qualify idea → L1" onClose=${function(){setModal(null)}}>
       <p class="small muted">L0 → L1 criteria (spec §6). Qualifying automatically creates Business Case v0, Project Charter v0 and the initial decision record.</p>
       <${Checklist} items=${l1Criteria(i)} />
-      ${!i.owner_id && html`<p class="small" style="color:var(--amber)">Tip: assign an owner in the triage panel first.</p>`}
       ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
       <button class="btn" onClick=${doQualify} disabled=${bz[0]}>Confirm qualification</button><//>`}
     ${modal==='l2' && html`<${Modal} title="Move to L2 — BC / Charter preparation" onClose=${function(){setModal(null)}}>
@@ -1077,9 +1077,8 @@ function TriagePanel(p) {
     resources_effort:i.resources_effort||'', cost_effort:i.cost_effort||'', change_effort:i.change_effort||'',
     technical_effort:i.technical_effort||'', provisional_sponsor:i.provisional_sponsor||'', committee_target:i.committee_target||'',
     quick_win:i.quick_win, priority:i.priority, triage_notes:i.triage_notes||'',
-    impacted_functions:i.impacted_functions||[], expected_value_types:i.expected_value_types||[], owner_id:i.owner_id||'' });
+    impacted_functions:i.impacted_functions||[], expected_value_types:i.expected_value_types||[] });
   var f = st[0]; function set(k,v){ st[1](function(s){ var n=Object.assign({},s); n[k]=v; return n; }); }
-  var profiles = useAsync(api.listProfiles, []);
   function sel(label,key,opts) {
     return html`<${Field} label=${label}>
       <select value=${f[key]} onChange=${function(e){set(key,e.target.value)}}>
@@ -1091,12 +1090,6 @@ function TriagePanel(p) {
     <h2>Triage & Assessment</h2>
     <div class="grid cols-2">
       ${sel('Digital Pillar','digital_pillar',PILLARS)}
-      <${Field} label="Owner (next-step assessment)">
-        <select value=${f.owner_id} onChange=${function(e){set('owner_id',e.target.value)}}>
-          <option value="">—</option>
-          ${(profiles.data||[]).filter(function(pr){return pr.role!=='requester'}).map(function(pr){
-            return html`<option key=${pr.id} value=${pr.id}>${pr.name}</option>`})}
-        </select><//>
       ${sel('Urgency','urgency',URGENCY)}
       ${sel('Data Availability','data_availability',DATA_AVAILABILITY)}
       ${sel('Resources Effort','resources_effort',EFFORT)}
@@ -1117,7 +1110,7 @@ function TriagePanel(p) {
     <button class="btn" disabled=${p.busy} onClick=${function(){
       p.save({ digital_pillar:f.digital_pillar||null, urgency:f.urgency||null, data_availability:f.data_availability||null,
         resources_effort:f.resources_effort||null, cost_effort:f.cost_effort||null, change_effort:f.change_effort||null,
-        technical_effort:f.technical_effort||null, committee_target:f.committee_target||null, owner_id:f.owner_id||null,
+        technical_effort:f.technical_effort||null, committee_target:f.committee_target||null,
         provisional_sponsor:f.provisional_sponsor, quick_win:f.quick_win, priority:f.priority, triage_notes:f.triage_notes,
         impacted_functions:f.impacted_functions, expected_value_types:f.expected_value_types });
     }}>Save assessment</button>
