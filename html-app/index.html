@@ -15,9 +15,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgen/3.12.0/pptxgen.bundle.js"></script>
 <style>
 :root { --bg:#f5f6f8; --card:#fff; --border:#e2e5ea; --text:#1a2233; --muted:#66708a;
-  --accent:#1f4fd8; --accent-soft:#e8eefc; --green:#1a8f4d; --green-soft:#e3f5ea;
-  --red:#c9342c; --red-soft:#fdeceb; --amber:#b26a00; --amber-soft:#fff3e0;
-  --purple:#6d3fc0; --purple-soft:#f0e9fb; --radius:10px; }
+  --accent:#ff1910; --accent-soft:#ffdddb; --green:#00b2a9; --green-soft:#dff7f5;
+  --red:#ff1910; --red-soft:#ffdddb; --amber:#ff8c33; --amber-soft:#fff1e6;
+  --purple:#a77bca; --purple-soft:#f4edf9; --radius:10px; }
 *{box-sizing:border-box} html,body{overflow-x:hidden}
 body{margin:0;font-family:'Jost','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
 a{color:var(--accent);text-decoration:none;cursor:pointer}
@@ -82,19 +82,27 @@ table.data tr:hover td{background:#fafbfd}
 .muted{color:var(--muted)}.small{font-size:12px}.mb0{margin-bottom:0}
 .bubble-wrap{position:relative}
 .bubble-tip{position:absolute;background:#101a33;color:#fff;padding:6px 10px;border-radius:7px;font-size:12px;pointer-events:none;z-index:5}
-.landing{min-height:100vh;background:#101a33;color:#dbe2f2}
-.landing .wrap{max-width:980px;margin:0 auto;padding:48px 24px}
-.landing .kicker{font-size:12.5px;letter-spacing:1.5px;text-transform:uppercase;color:#7f8db0;margin:0 0 10px}
-.landing h1{font-size:34px;color:#fff;margin:0 0 12px;line-height:1.2}
-.landing .sub{font-size:16px;color:#9fabc8;margin:0 0 26px;max-width:640px}
-.landing .cta-row{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:44px}
+.landing{min-height:100vh;background:#fff;color:var(--text)}
+.landing .wrap{max-width:1180px;margin:0 auto;padding:34px 24px 54px}
+.landing .hero{background:#050505;color:#fff;border-radius:0;padding:38px 42px;margin-bottom:24px;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:32px;align-items:center}
+.landing .mark{width:58px;height:58px;background:var(--accent);margin-bottom:24px}
+.landing .kicker{font-size:12.5px;letter-spacing:1.5px;text-transform:uppercase;color:#ffdddb;margin:0 0 10px;font-weight:700}
+.landing h1{font-size:42px;color:#fff;margin:0 0 12px;line-height:1.08;max-width:760px}
+.landing .sub{font-size:17px;color:#e7e7e7;margin:0 0 26px;max-width:760px}
+.landing .cta-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .landing .btn.big{padding:13px 24px;font-size:15px}
-.landing h2{color:#fff;font-size:18px;margin:0 0 14px}
-.landing .lcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin-bottom:38px}
-.landing .lcard{background:#18233f;border:1px solid #24304f;border-radius:10px;padding:14px}
+.landing .hero .btn.secondary{background:#fff;color:#050505;border-color:#fff}
+.landing h2{color:var(--text);font-size:20px;margin:0 0 14px}
+.landing .lcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin-bottom:34px}
+.landing .lcard{background:#fff;border:1px solid var(--border);border-radius:8px;padding:14px}
 .landing .lcard .ic{font-size:22px}
-.landing .lcard b{color:#fff;font-size:13.5px;display:block;margin:6px 0 4px}
-.landing .lcard p{font-size:12.5px;color:#9fabc8;margin:0;line-height:1.45}
+.landing .lcard b{color:var(--text);font-size:13.5px;display:block;margin:6px 0 4px}
+.landing .lcard p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.45}
+.landing .role-panel{background:#f7f8fb;border:1px solid var(--border);border-radius:8px;padding:18px}
+.landing .role-panel b{display:block;color:#050505;font-size:14px;margin-bottom:5px}
+.landing .role-panel p{color:var(--muted);font-size:12.5px;line-height:1.45;margin:0 0 14px}
+.landing .role-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:34px}
+@media(max-width:820px){.landing .hero{grid-template-columns:1fr;padding:28px 24px}.landing h1{font-size:32px}.landing .role-grid{grid-template-columns:1fr}}
 .stepper{display:flex;margin:14px 0 10px}
 .step{flex:1;text-align:center;position:relative;font-size:11.5px;color:var(--muted);min-width:60px}
 .step .bar{position:absolute;top:10px;left:-50%;width:100%;height:3px;background:#e2e5ea}
@@ -504,43 +512,69 @@ function Login(p) {
   </div></div>`;
 }
 
-/* ================= Public landing (idea submitters) ================= */
+/* ================= Public landing (normal app gateway) ================= */
+var LANDING_ROLES = [
+  ['Idea owner / requester', 'Submit a digitalization idea, complete the starter kit when requested, and follow decisions from My Ideas.', '/ideas/new', 'Submit an idea', true],
+  ['Program Manager / Digital Team', 'Steer the portfolio from the cockpit: exceptions, gate-ready packages, decisions, alerts and governance preparation.', '/cockpit', 'Sign in to cockpit', false],
+  ['Project Manager', 'Open assigned projects, linked initiatives, review preparation and delivery details from the project workspace.', '/projects', 'Sign in to workspace', false] ];
 var LANDING_STEPS = [
-  ['💡','Submit your idea','About 5 minutes, in plain language — the problem, who it affects, the benefit you expect.'],
-  ['🔍','We triage it','The Digital Team checks scope, duplicates and fit within a few days.'],
-  ['🧰','Complete your kit','If qualified, you unlock a guided Business Case & Project Charter (~15 min each), pre-filled from your submission.'],
-  ['⚖️','A committee decides','Your initiative is presented at the right SteerCo. Go, Rework, Hold or No-Go — always with a reason.'],
-  ['🚀','It becomes a project','Approved ideas are converted into official projects. You follow everything from your account.']];
+  ['01','Submit your idea','About 5 minutes, in plain language: the problem, who it affects, and the benefit you expect.'],
+  ['02','Digital Team triage','Scope, duplicates, pillar fit and ownership are checked before qualification.'],
+  ['03','Complete the kit','Qualified ideas unlock a guided Business Case and Project Charter.'],
+  ['04','Committee decision','The right forum records Go, Rework, Hold or No-Go with the reason.'],
+  ['05','Project execution','Approved ideas are converted into projects and tracked in the cockpit.']];
 function LandingPage() {
   function goSubmit() {
     try { sessionStorage.setItem('postLoginRoute', '/ideas/new'); } catch(e){}
     nav('/signup');
   }
+  function goLogin() {
+    nav('/login');
+  }
   return html`<div class="landing"><div class="wrap">
-    <p class="kicker">PWT Digitalization Program</p>
-    <h1>Have an idea to digitalize, simplify or automate your work?</h1>
-    <p class="sub">Submit it in about 5 minutes — then follow it, step by step, all the way to a funded project. No jargon needed: plain language and rough estimates are fine.</p>
-    <div class="cta-row">
-      <button class="btn big" onClick=${goSubmit}>🚀 Submit my idea</button>
-      <a style="color:#9fabc8" onClick=${function(){nav('/login')}}>I already have an account — sign in</a>
+    <div class="hero">
+      <div>
+        <div class="mark"></div>
+        <p class="kicker">PWT Digitalization Program</p>
+        <h1>Digitalization Program Cockpit</h1>
+        <p class="sub">One entry point for ideas, portfolio steering, governance decisions and project follow-up. Choose your path, then the app routes you to the right workspace after sign-in.</p>
+        <div class="cta-row">
+          <button class="btn big" onClick=${goSubmit}>Submit an idea</button>
+          <button class="btn secondary big" onClick=${goLogin}>Sign in to cockpit</button>
+        </div>
+      </div>
+      <div class="role-panel">
+        <b>Normal access rule</b>
+        <p>Public visitors see this gateway. After login, requesters land on My Ideas, Program Manager and Digital Team land on Cockpit, Project Managers land on their operational workspace.</p>
+        <button class="btn secondary small" onClick=${goLogin}>I already have an account</button>
+      </div>
     </div>
-    <h2>How it works</h2>
+    <h2>Choose your workspace</h2>
+    <div class="role-grid">
+      ${LANDING_ROLES.map(function(r) {
+        return html`<div class="role-panel" key=${r[0]}>
+          <b>${r[0]}</b>
+          <p>${r[1]}</p>
+          <button class=${r[4] ? 'btn' : 'btn secondary'} onClick=${function(){ r[4] ? goSubmit() : goLogin(); }}>${r[3]}</button>
+        </div>`; })}
+    </div>
+    <h2>Idea journey</h2>
     <div class="lcards">
       ${LANDING_STEPS.map(function(s, i) {
         return html`<div class="lcard" key=${i}>
-          <span class="ic">${s[0]}</span><b>${(i+1) + '. ' + s[1]}</b><p>${s[2]}</p>
+          <span class="ic">${s[0]}</span><b>${s[1]}</b><p>${s[2]}</p>
         </div>`; })}
     </div>
-    <h2>Why create an account?</h2>
+    <h2>Why sign in?</h2>
     <div class="lcards" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr))">
-      <div class="lcard"><span class="ic">🔔</span><b>Follow your idea in real time</b>
-        <p>You are notified at every step — in the app and by email: triage, qualification, committee decision, project kick-off.</p></div>
-      <div class="lcard"><span class="ic">🧰</span><b>Get your starter kit</b>
-        <p>If your idea is qualified, your account gives you access to a guided Business Case and Project Charter to prepare it for the committee.</p></div>
-      <div class="lcard"><span class="ic">⚖️</span><b>Transparent decisions</b>
-        <p>Every outcome comes with a reason, recorded in the governance log. Nothing disappears into a black box.</p></div>
+      <div class="lcard"><span class="ic">A</span><b>Action-based cockpit</b>
+        <p>Focus on decisions, SLA breaches, gate-ready packages, alerts and portfolio exposure.</p></div>
+      <div class="lcard"><span class="ic">B</span><b>Requester follow-up</b>
+        <p>Idea owners see what is happening, what is needed from them and how decisions are recorded.</p></div>
+      <div class="lcard"><span class="ic">C</span><b>Governance memory</b>
+        <p>Business cases, charters and decision logs stay linked from idea to project.</p></div>
     </div>
-    <p class="small" style="color:#66708a">Questions? Contact the Digitalization Program team.</p>
+    <p class="small muted">Questions? Contact the Digitalization Program team.</p>
   </div></div>`;
 }
 
@@ -2436,12 +2470,23 @@ function App() {
   if (!profile) return html`<div style="padding:40px">Loading profile…</div>`;
   var isPMTT = ['program_manager','transformation_team'].indexOf(profile.role) >= 0;
   var isPM = profile.role === 'program_manager';
+  var isProjectLead = profile.role === 'project_lead';
   var auth = { session:session, profile:profile, isPMTT:isPMTT, isPM:isPM };
+  var defaultRoute = isPMTT ? '/cockpit' : profile.role === 'requester' ? '/my-ideas' : isProjectLead ? '/projects' : '/ideas';
 
   var m;
   var page;
   if (route === '/' || route === '/welcome' || route === '/login' || route === '/signup') {
-    nav(isPMTT ? '/cockpit' : profile.role === 'requester' ? '/my-ideas' : '/ideas'); page = html`<div />`;
+    nav(defaultRoute); page = html`<div />`;
+  }
+  else if ((route === '/cockpit' || route === '/decisions' || route === '/reviews' || route === '/import-export') && !isPMTT) {
+    nav(defaultRoute); page = html`<div />`;
+  }
+  else if (route === '/admin' && !isPM) {
+    nav(defaultRoute); page = html`<div />`;
+  }
+  else if ((route === '/projects' || route.indexOf('/projects/') === 0) && !(isPMTT || isProjectLead)) {
+    nav(defaultRoute); page = html`<div />`;
   }
   else if (route === '/cockpit') page = html`<${CockpitPage} />`;
   else if (route === '/my-ideas') page = html`<${MyIdeasPage} auth=${auth} />`;
