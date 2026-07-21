@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<title>Digitalization Program Cockpit</title>
+<title>PWT Digital Pulse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -27,7 +27,10 @@ a{color:var(--accent);text-decoration:none;cursor:pointer}
 h1{font-size:20px;margin:0 0 4px} h2{font-size:16px;margin:0 0 8px} h3{font-size:14px;margin:0 0 6px}
 .app{display:flex;min-height:100vh}
 .sidebar{width:220px;background:#101a33;color:#cfd6e6;padding:16px 0;flex-shrink:0;display:flex;flex-direction:column}
-.sidebar .brand{padding:0 16px 16px;color:#fff;font-weight:700;font-size:15px;line-height:1.3;border-bottom:1px solid #24304f;margin-bottom:8px}
+.sidebar .brand{padding:0 16px 16px;color:#fff;font-weight:700;font-size:15px;line-height:1.3;border-bottom:1px solid #24304f;margin-bottom:8px;display:flex;gap:10px;align-items:center}
+.brand-title{display:block}
+.pulse-logo{width:36px;height:36px;flex:0 0 36px;border:1px solid rgba(255,255,255,.22);border-radius:8px;background:#050505}
+.pulse-logo .pulse-line{stroke:var(--accent);stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .sidebar nav a{display:block;padding:9px 16px;color:#cfd6e6;font-size:13.5px;border-left:3px solid transparent}
 .sidebar nav a.active{background:#1c2947;color:#fff;border-left-color:var(--accent)}
 .sidebar nav a:hover{background:#18233f}
@@ -135,7 +138,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.21.7';
+var APP_VERSION = '2026.07.21.9';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -280,6 +283,14 @@ function charterMap(charters) {
 }
 function isPriorityProject(p){ return (p.needs_attention||'').toLowerCase().indexOf('priority') >= 0; }
 function isQuickWinProject(p){ return (p.needs_attention||'').toLowerCase().indexOf('quick win') >= 0; }
+function profileLabel(pr) {
+  if (!pr) return 'Unassigned';
+  return (pr.name || pr.email || 'Unnamed user') + (pr.email ? ' <' + pr.email + '>' : '');
+}
+function projectManagerLabel(p) {
+  if (p && p.manager) return profileLabel(p.manager);
+  return (p && p.project_lead) || 'Unassigned';
+}
 
 /* ================= Data access layer (Supabase) ================= */
 function one(r) { if (r.error) throw r.error; return r.data; }
@@ -316,7 +327,17 @@ var api = {
   listDecisions: function(){ return sb.from('decisions').select('*, owner:owner_id(name), action_owner:action_owner_id(name)').order('due_date',{ascending:true,nullsFirst:false}).then(one); },
   createDecision: function(f){ return sb.from('decisions').insert(f).select().single().then(one); },
   updateDecision: function(id,f){ return sb.from('decisions').update(f).eq('id',id).select().single().then(one); },
-  listProjects: function(){ return sb.from('projects').select('*').order('project_id').then(one); },
+  listProjects: function(){
+    return sb.from('projects').select('*, manager:project_manager_id(name,email)').order('project_id').then(function(r){
+      var msg = r.error && (r.error.message || '');
+      if (r.error && (msg.indexOf('project_manager_id') >= 0 || msg.indexOf('relationship') >= 0 || msg.indexOf('schema cache') >= 0)) {
+        return sb.from('projects').select('*').order('project_id').then(one).then(function(rows){
+          return rows.map(function(row){ row.manager = null; return row; });
+        });
+      }
+      return one(r);
+    });
+  },
   upsertProjects: function(rows){ return sb.from('projects').upsert(rows,{onConflict:'project_id'}).select().then(one); },
   updateProject: function(id,f){ return sb.from('projects').update(f).eq('id',id).select().single().then(one); },
   listChartersLight: function(){ return sb.from('project_charters').select('id, idea_id, charter_id, version, status, smartsheet_project_id').then(one); },
@@ -424,7 +445,10 @@ function userErrorMessage(e) {
   var msg = (e && e.message) ? e.message : String(e || 'Unknown error');
   var low = msg.toLowerCase();
   if (low.indexOf('status_reason') >= 0 || low.indexOf('has no field') >= 0) {
-    return 'This action could not be completed because your browser is running an older version of the app. Please refresh with Ctrl+F5, then try again. If it still appears, contact the Digitalization Program team.';
+    return 'This action could not be completed because your browser is running an older version of PWT Digital Pulse. Please refresh with Ctrl+F5, then try again. If it still appears, contact the Digital Transformation team.';
+  }
+  if (low.indexOf('project_manager_id') >= 0 || low.indexOf('schema cache') >= 0) {
+    return 'The project assignment database update has not been applied yet. Ask a Program Manager/Admin to run migration 8 in Supabase SQL Editor, then refresh the app.';
   }
   if (low.indexOf('permission denied') >= 0 || low.indexOf('row-level security') >= 0) {
     return 'You do not have permission to perform this action. Ask a Program Manager to check your role or complete the action.';
@@ -465,6 +489,12 @@ function Progress(p) {
   return html`<div class="progress"><div style="width:${p.pct}%;background:${col}"></div></div>`;
 }
 function RoadmapNote(){ return html`<div class="roadmap-note">🔮 <b>Roadmap:</b> ${ROADMAP_NOTE}</div>`; }
+function PulseLogo() {
+  return html`<svg class="pulse-logo" viewBox="0 0 64 64" aria-label="PWT Digital Pulse logo">
+    <rect x="1" y="1" width="62" height="62" rx="10" fill="#050505"></rect>
+    <path class="pulse-line" d="M8 34 H19 L25 19 L33 47 L40 28 L45 34 H56"></path>
+  </svg>`;
+}
 function useAsync(fn, deps) {
   var st = useState({loading:true, data:null, error:null});
   var state = st[0], setState = st[1];
@@ -511,7 +541,7 @@ function Login(p) {
     : mode === 'magic' ? 'No password needed — we email you a one-click sign-in link'
     : 'Governance preparation & portfolio steering';
   return html`<div class="login-wrap"><div class="login-card">
-    <h1 style="margin-bottom:4px">Digitalization Program Cockpit</h1>
+    <h1 style="margin-bottom:4px">PWT Digital Pulse</h1>
     <p class="muted small" style="margin-top:0">${sub}</p>
     <form onSubmit=${submit}>
       ${mode === 'signup' && html`<div class="field"><label>Name</label><input type="text" value=${nm[0]} onInput=${function(e){nm[1](e.target.value)}} required /></div>`}
@@ -552,9 +582,9 @@ function LandingPage() {
   return html`<div class="landing"><div class="wrap">
     <div class="hero">
       <div>
-        <div class="mark"></div>
-        <p class="kicker">PWT Digitalization Program</p>
-        <h1>Digitalization Program Cockpit</h1>
+        <${PulseLogo} />
+        <p class="kicker">PWT Digital Transformation</p>
+        <h1>PWT Digital Pulse</h1>
         <p class="sub">One entry point for ideas, portfolio steering, governance decisions and project follow-up. Choose your path, then the app routes you to the right workspace after sign-in.</p>
         <div class="cta-row">
           <button class="btn big" onClick=${goSubmit}>Submit an idea</button>
@@ -592,7 +622,7 @@ function LandingPage() {
       <div class="lcard"><span class="ic">C</span><b>Governance memory</b>
         <p>Business cases, charters and decision logs stay linked from idea to project.</p></div>
     </div>
-    <p class="small muted">Questions? Contact the Digitalization Program team.</p>
+    <p class="small muted">Questions? Contact the Digital Transformation team.</p>
   </div></div>`;
 }
 
@@ -1648,7 +1678,8 @@ function ProjectDetailPage(p) {
             ${row('Execution phase', pr.execution_phase)}
             ${row('Benefiting functions', pr.key_benefiting_functions)}
             ${row('Pillar sponsor', pr.pillar_sponsor)}
-            ${row('Project Manager (lead)', pr.project_lead)}
+            ${row('Assigned Project Manager', projectManagerLabel(pr))}
+            ${row('SmartSheet Project Lead', pr.project_lead)}
             ${row('IT lead', pr.pwt_it_lead)}
             ${row('Integrator / consultants', pr.integrator_consultants)}
             <tr><td class="muted small">Charter</td><td>${(!pr.charter_status || pr.charter_status === 'Not created') && prCharter
@@ -1751,7 +1782,7 @@ function ProjectsPage() {
           <td>${p.project_id}</td>
           <td>${p.project_name}${isPriorityProject(p)&&html` <${Badge} color="red">P<//>`}${isQuickWinProject(p)&&html` <${Badge} color="green">QW<//>`}</td>
           <td class="small">${p.current_stage||'—'}</td><td class="small">${p.digital_pillar||'—'}</td>
-          <td class="small">${p.project_lead||'—'}</td><td class="small">${p.pillar_sponsor||'—'}</td>
+          <td class="small">${projectManagerLabel(p)}</td><td class="small">${p.pillar_sponsor||'—'}</td>
           <td>${(!p.charter_status || p.charter_status === 'Not created') && chMap[p.project_id]
             ? html`<${Badge} color="blue">In app ${chMap[p.project_id].version}<//>`
             : html`<${StatusB} v=${p.charter_status} />`}</td><td><${StatusB} v=${p.it_demand_status} /></td><td><${StatusB} v=${p.ar_status} /></td>
@@ -1768,7 +1799,7 @@ function ProjectPanel(props) {
   var p = props.p;
   var alerts = projectAlerts(p);
   var rows = [['Stage',p.current_stage],['Execution phase',p.execution_phase],['Pillar',p.digital_pillar],
-    ['Benefiting functions',p.key_benefiting_functions],['Sponsor',p.pillar_sponsor],['Lead',p.project_lead],
+    ['Benefiting functions',p.key_benefiting_functions],['Sponsor',p.pillar_sponsor],['Assigned manager',projectManagerLabel(p)],['SmartSheet lead',p.project_lead],
     ['IT lead',p.pwt_it_lead],['Integrator',p.integrator_consultants],['Charter',p.charter_status],
     ['IT demand',p.it_demand_status],['AR',p.ar_status],['CAPEX k€',p.capex_keur],['Current Y budget',p.current_year_budget],
     ['Cost center',p.cost_center_internal_order],['Planned',fmtDate(p.planned_start_date)+' → '+fmtDate(p.planned_end_date)],
@@ -2009,7 +2040,7 @@ function exportSteercoPPT(I, P, D, chMap) {
   // Slide 1 - title + funnel
   var s1 = pres.addSlide();
   s1.addText('Digitalization SteerCo Pack', { x:0.5, y:2.2, w:12.3, h:1, fontSize:34, bold:true, color:INK });
-  s1.addText(today + '  ·  Generated by the Digitalization Program Cockpit', { x:0.5, y:3.2, w:12.3, h:0.5, fontSize:14, color:GREY });
+  s1.addText(today + '  ·  Generated by PWT Digital Pulse', { x:0.5, y:3.2, w:12.3, h:0.5, fontSize:14, color:GREY });
   var funnel = [
     ['Submitted', I.filter(function(i){return i.stage==='L0 Submitted'}).length],
     ['In triage', I.filter(function(i){return i.stage==='L0 Triage'}).length],
@@ -2277,7 +2308,7 @@ function ReviewsPage() {
       var inP = P.filter(function(p){return (p.digital_pillar||'Unassigned') === pillar});
       var g1 = atG1.filter(function(i){return (i.digital_pillar||'Unassigned') === pillar});
       var leads = []; var ls = {};
-      inP.forEach(function(p){ var k = p.project_lead || 'No lead assigned'; if (!ls[k]) { ls[k] = true; leads.push(k); } });
+      inP.forEach(function(p){ var k = projectManagerLabel(p); if (!ls[k]) { ls[k] = true; leads.push(k); } });
       leads.sort();
       var chMap = charterMap(chartersL.data);
       var redCount = inP.filter(function(p){return projectAlerts(p, !!chMap[p.project_id]).length > 0}).length;
@@ -2291,7 +2322,7 @@ function ReviewsPage() {
               <span class="muted small">${i.committee_target || 'committee TBD'}</span></div>`; })}
         </div>`}
         ${leads.map(function(lead) {
-          var its = inP.filter(function(p){return (p.project_lead||'No lead assigned') === lead});
+          var its = inP.filter(function(p){return projectManagerLabel(p) === lead});
           return html`<div key=${lead} style="margin-bottom:8px;border-top:1px solid var(--border);padding-top:8px">
             <h3 class="small" style="margin-bottom:4px">${lead} <span class="muted" style="font-weight:400">· ${its.length}</span></h3>
             ${its.map(function(p) {
@@ -2334,13 +2365,17 @@ function NotificationsPage(p) {
 }
 function AdminPage(p) {
   var profiles = useAsync(api.listProfiles, []);
+  var projects = useAsync(api.listProjects, []);
   var refs = useAsync(api.listReference, []);
   var settings = useAsync(api.getSettings, []);
   var er = useState(null), bz = useState(false);
   var thr = useState(null), sla = useState(null);
   var newVal = useState({ pillar:'', function:'', value_type:'' });
-  if (profiles.loading || refs.loading) return html`<p>Loading…</p>`;
+  if (profiles.loading || projects.loading || refs.loading) return html`<p>Loading…</p>`;
   var R = refs.data || [];
+  var people = profiles.data || [];
+  var projectManagers = people.filter(function(pr){ return pr.active && pr.role === 'project_lead'; });
+  var digitalTeam = people.filter(function(pr){ return pr.active && pr.role === 'transformation_team'; });
   function sVal(key, fallback) {
     var row = (settings.data || []).find(function(s){ return s.key === key; });
     return row ? Number(row.value) : fallback;
@@ -2353,7 +2388,17 @@ function AdminPage(p) {
     return promise.then(function(){ refs.reload(); settings.reload(); if (p.onRefChange) p.onRefChange(); })
       .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
   }
-  function setRole(id, role){ api.updateProfileRole(id, role).then(profiles.reload).catch(function(e){ er[1](userErrorMessage(e)); }); }
+  function setRole(id, role){
+    bz[1](true); er[1](null);
+    api.updateProfileRole(id, role).then(function(){ profiles.reload(); })
+      .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
+  }
+  function assignProject(project, managerId) {
+    bz[1](true); er[1](null);
+    api.updateProject(project.id, { project_manager_id: managerId || null })
+      .then(function(){ projects.reload(); })
+      .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
+  }
   function addRef(cat) {
     var v = (newVal[0][cat] || '').trim();
     if (!v) return;
@@ -2399,7 +2444,7 @@ function AdminPage(p) {
       </div>
     </div>`;
   }
-  return html`<div style="max-width:860px">
+  return html`<div style="max-width:1100px">
     <div class="topbar"><h1>Administration</h1></div>
     ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
     <div class="card">
@@ -2415,6 +2460,64 @@ function AdminPage(p) {
             </select></td>
             <td>${pr.active ? html`<${Badge} color="green">active<//>` : html`<${Badge} color="gray">inactive<//>`}</td></tr>`; })}
         </tbody></table>
+    </div>
+    <div class="grid cols-2">
+      <div class="card">
+        <h2>Digital Transformation Team</h2>
+        <p class="muted small" style="margin-top:0">Add an existing user to the Digital Transformation team by changing their role here. New people must sign up once before they appear in this list.</p>
+        ${digitalTeam.length ? digitalTeam.map(function(pr){
+          return html`<div key=${pr.id} class="alert-line">
+            <${Badge} color="blue">Digital Team<//>
+            <span>${profileLabel(pr)}</span>
+          </div>`;
+        }) : html`<p class="muted small">No Digital Transformation team member yet.</p>`}
+        <${Field} label="Add existing user to Digital Transformation team">
+          <select value="" onChange=${function(e){ if (e.target.value) { setRole(e.target.value, 'transformation_team'); e.target.value = ''; } }} disabled=${bz[0]}>
+            <option value="">Select a user...</option>
+            ${people.filter(function(pr){ return pr.active && pr.role !== 'transformation_team' && pr.role !== 'program_manager'; }).map(function(pr){
+              return html`<option key=${pr.id} value=${pr.id}>${profileLabel(pr)} - ${pr.role.replace(/_/g,' ')}</option>`;
+            })}
+          </select><//>
+      </div>
+      <div class="card">
+        <h2>Project Managers</h2>
+        <p class="muted small" style="margin-top:0">Project Managers can be assigned to projects below. Promote an existing user first if needed.</p>
+        ${projectManagers.length ? projectManagers.map(function(pr){
+          return html`<div key=${pr.id} class="alert-line">
+            <${Badge} color="green">Project Manager<//>
+            <span>${profileLabel(pr)}</span>
+          </div>`;
+        }) : html`<p class="muted small">No Project Manager yet.</p>`}
+        <${Field} label="Promote existing user to Project Manager">
+          <select value="" onChange=${function(e){ if (e.target.value) { setRole(e.target.value, 'project_lead'); e.target.value = ''; } }} disabled=${bz[0]}>
+            <option value="">Select a user...</option>
+            ${people.filter(function(pr){ return pr.active && pr.role !== 'project_lead' && pr.role !== 'program_manager'; }).map(function(pr){
+              return html`<option key=${pr.id} value=${pr.id}>${profileLabel(pr)} - ${pr.role.replace(/_/g,' ')}</option>`;
+            })}
+          </select><//>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Project assignments</h2>
+      <p class="muted small" style="margin-top:0">Assign each project to an app Project Manager. The SmartSheet Project Lead text remains visible as imported data.</p>
+      <div style="overflow-x:auto"><table class="data">
+        <thead><tr><th>Project</th><th>Pillar</th><th>SmartSheet Lead</th><th>Assigned Project Manager</th></tr></thead>
+        <tbody>${(projects.data||[]).map(function(project){
+          return html`<tr key=${project.id}>
+            <td><${A} href=${'/projects/'+project.id}>${project.project_id} ${project.project_name}<//></td>
+            <td class="small">${project.digital_pillar || 'Unassigned'}</td>
+            <td class="small">${project.project_lead || '—'}</td>
+            <td>
+              <select value=${project.project_manager_id || ''} onChange=${function(e){ assignProject(project, e.target.value); }} disabled=${bz[0] || !projectManagers.length}
+                style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px">
+                <option value="">Unassigned</option>
+                ${projectManagers.map(function(pr){ return html`<option key=${pr.id} value=${pr.id}>${profileLabel(pr)}</option>`; })}
+              </select>
+            </td>
+          </tr>`;
+        })}
+        ${!(projects.data||[]).length && html`<tr><td colSpan="4" class="muted">No projects yet. Import projects from SmartSheet I/O first.</td></tr>`}
+        </tbody></table></div>
     </div>
     <div class="card">
       <h2>Governance settings</h2>
@@ -2521,7 +2624,7 @@ function App() {
   }
   return html`<div class="app">
     <aside class="sidebar">
-      <div class="brand">Digitalization<br />Program Cockpit</div>
+      <div class="brand"><${PulseLogo} /><span class="brand-title">PWT Digital<br />Pulse</span></div>
       <nav>
         ${isPMTT && navLink('/cockpit','📊 Cockpit')}
         ${profile.role === 'requester' ? navLink('/my-ideas','🏠 My Ideas') : navLink('/ideas','💡 Ideation Board')}

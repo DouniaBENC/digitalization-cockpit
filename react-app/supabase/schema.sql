@@ -1,5 +1,5 @@
 -- ============================================================
--- Digitalization Program Cockpit - Supabase schema (MVP)
+-- PWT Digital Pulse - Supabase schema (MVP)
 -- Run this in the Supabase SQL editor of a fresh project.
 -- ============================================================
 
@@ -198,6 +198,7 @@ create table public.projects (
   pillar_sponsor text,
   project_description text,
   project_lead text,
+  project_manager_id uuid references public.profiles(id),
   pwt_it_lead text,
   integrator_consultants text,
   charter_status text,
@@ -422,11 +423,18 @@ create policy dec_owner_select on public.decisions for select to authenticated
 create policy dec_owner_update on public.decisions for update to authenticated
   using (owner_id = auth.uid() or action_owner_id = auth.uid());
 
--- Projects: PM + TT full; project leads read
+-- Projects: PM + TT full; project leads read assigned projects
 create policy prj_all_pm_tt on public.projects for all to authenticated
   using (public.is_pm_or_tt()) with check (public.is_pm_or_tt());
 create policy prj_lead_select on public.projects for select to authenticated
-  using (public.my_role() = 'project_lead');
+  using (
+    public.my_role() = 'project_lead'
+    and (
+      project_manager_id = auth.uid()
+      or project_lead = (select name from public.profiles where id = auth.uid())
+      or project_lead = (select email from public.profiles where id = auth.uid())
+    )
+  );
 
 -- Notifications: recipient only
 create policy notif_select on public.notifications for select to authenticated
@@ -895,6 +903,6 @@ begin
   values (new.id, coalesce(new.raw_user_meta_data->>'name', split_part(new.email,'@',1)), new.email);
   insert into public.notifications (recipient_id, type, message)
   values (new.id, 'Welcome',
-    'Welcome to the Digitalization Program Cockpit! Submit your idea in about 5 minutes, then track its progress here - you will be notified at every step.');
+    'Welcome to PWT Digital Pulse! Submit your idea in about 5 minutes, then track its progress here - you will be notified at every step.');
   return new;
 end; $$;

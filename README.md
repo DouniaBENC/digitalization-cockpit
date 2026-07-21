@@ -1,4 +1,4 @@
-# Digitalization Program Cockpit
+# PWT Digital Pulse
 
 Gouvernance de bout en bout du portefeuille de digitalisation : soumission d'idée → triage → qualification (L1) → Business Case / Project Charter → comité G1 → conversion en projet → suivi SmartSheet → Cockpit exécutif (SteerCo-ready en moins de 30 min).
 
