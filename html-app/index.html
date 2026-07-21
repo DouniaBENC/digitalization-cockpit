@@ -1853,6 +1853,15 @@ function pipeR(value) {
   if (value > 0) return Math.max(7, Math.min(22, 6 + Math.sqrt(value) * 1.6));
   return 9;
 }
+function comparePillars(a, b) {
+  if (a === 'Unassigned') return b === 'Unassigned' ? 0 : 1;
+  if (b === 'Unassigned') return -1;
+  var ai = PILLARS.indexOf(a), bi = PILLARS.indexOf(b);
+  if (ai >= 0 && bi >= 0) return ai - bi;
+  if (ai >= 0) return -1;
+  if (bi >= 0) return 1;
+  return String(a).localeCompare(String(b));
+}
 function PipelineChart(p) {
   var ex = useState(false), expanded = ex[0];
   var SLOTS = pipeSlots(expanded);
@@ -1861,6 +1870,7 @@ function PipelineChart(p) {
   function addPillar(x){ var k = x || 'Unassigned'; if (!seen[k]) { seen[k] = true; rows.push(k); } }
   p.ideas.forEach(function(i){ addPillar(i.digital_pillar); });
   p.projects.forEach(function(pr){ addPillar(pr.digital_pillar); });
+  rows.sort(comparePillars);
   if (!rows.length) return html`<p class="muted">No data yet — submit ideas or import projects.</p>`;
   var LW = 170, RH = 56, top = 54;
   var CW = expanded ? 72 : 96;
@@ -2075,7 +2085,7 @@ function CockpitPage() {
     e.n++; e.capex += (p.capex_keur || 0); e.budget += (p.current_year_budget || 0);
     if (p.capex_keur == null && p.current_year_budget == null) e.nodata++;
   });
-  var pillarRows = Object.keys(pillarCost).sort();
+  var pillarRows = Object.keys(pillarCost).sort(comparePillars);
   function alertLine(x, type, color, label) {
     return html`<div key=${x.p.id+type} class="alert-line"><${Badge} color=${color}>${label}<//>
       <span>${x.p.project_id} ${x.p.project_name}</span>
@@ -2096,7 +2106,7 @@ function CockpitPage() {
           var s = {}; var out = [];
           (ideas.data||[]).forEach(function(i){ var k=i.digital_pillar||'Unassigned'; if(!s[k]){s[k]=1;out.push(k);} });
           (projects.data||[]).forEach(function(p){ var k=p.digital_pillar||'Unassigned'; if(!s[k]){s[k]=1;out.push(k);} });
-          return out.sort().map(function(pl){return html`<option key=${pl}>${pl}</option>`});
+          return out.sort(comparePillars).map(function(pl){return html`<option key=${pl}>${pl}</option>`});
         })()}
       </select>
       <select value=${cf.stage} onChange=${function(e){cfl[1]({ pillar:cf.pillar, stage:e.target.value })}}>
@@ -2207,7 +2217,7 @@ function ReviewsPage() {
   var pillars = []; var seen = {};
   P.forEach(function(p){ var k = p.digital_pillar || 'Unassigned'; if (!seen[k]) { seen[k] = true; pillars.push(k); } });
   atG1.forEach(function(i){ var k = i.digital_pillar || 'Unassigned'; if (!seen[k]) { seen[k] = true; pillars.push(k); } });
-  pillars.sort();
+  pillars.sort(comparePillars);
   return html`<div>
     <div class="topbar">
       <div><h1>Reviews</h1>
