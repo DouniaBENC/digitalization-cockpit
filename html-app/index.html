@@ -1131,7 +1131,7 @@ function ReasonModal(p) {
   function confirm() {
     if (!rs[0].trim()) { er[1]('A reason is required.'); return; }
     bz[1](true); er[1](null);
-    api.updateIdea(p.i.id, { stage: target, status_reason: rs[0].trim() })
+    api.updateIdea(p.i.id, { stage: target })
       .then(function(){ return api.addComment('Idea', p.i.id, p.auth.profile.id,
         (isReject ? 'Rejected: ' : 'Put on hold: ') + rs[0].trim()); })
       .then(function(){ p.onDone(); })
