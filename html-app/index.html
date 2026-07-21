@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>Digitalization Program Cockpit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -132,6 +135,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+var APP_VERSION = '2026.07.21.6';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -416,6 +420,20 @@ function validateForExport(idea, charter) {
 /* ================= UI helpers ================= */
 function fmtDate(d){ return d ? new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'; }
 function fmtDateTime(d){ return d ? new Date(d).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'; }
+function userErrorMessage(e) {
+  var msg = (e && e.message) ? e.message : String(e || 'Unknown error');
+  var low = msg.toLowerCase();
+  if (low.indexOf('status_reason') >= 0 || low.indexOf('has no field') >= 0) {
+    return 'This action could not be completed because your browser is running an older version of the app. Please refresh with Ctrl+F5, then try again. If it still appears, contact the Digitalization Program team.';
+  }
+  if (low.indexOf('permission denied') >= 0 || low.indexOf('row-level security') >= 0) {
+    return 'You do not have permission to perform this action. Ask a Program Manager to check your role or complete the action.';
+  }
+  if (low.indexOf('jwt') >= 0 || low.indexOf('session') >= 0) {
+    return 'Your session has expired. Please sign out, sign back in, and try again.';
+  }
+  return msg;
+}
 function Badge(p){ return html`<span class="badge ${p.color||'gray'}">${p.children}</span>`; }
 function StageBadge(p){
   var colors = {'L0 Submitted':'gray','L0 Triage':'amber','L1 Qualified':'blue','L2 BC/Charter':'purple','G1 Approval':'amber','Converted':'green','Rejected':'red','Hold':'gray'};
@@ -487,7 +505,7 @@ function Login(p) {
     var pr = mode === 'signin' ? api.signIn(em[0], pw[0])
       : mode === 'magic' ? api.signInMagic(em[0]).then(function(){ inf[1]('Check your inbox — we sent you a sign-in link. You can close this tab.'); })
       : api.signUp(em[0], pw[0], nm[0]).then(function(){ inf[1]('Account created. If email confirmation is enabled, check your inbox; otherwise sign in.'); setMode('signin'); });
-    pr.catch(function(err){ er[1](err.message); }).finally(function(){ bz[1](false); });
+    pr.catch(function(err){ er[1](userErrorMessage(err)); }).finally(function(){ bz[1](false); });
   }
   var sub = mode === 'signup' ? 'Create your account to submit your idea and track it at every step'
     : mode === 'magic' ? 'No password needed — we email you a one-click sign-in link'
@@ -598,7 +616,7 @@ function IdeaForm(p) {
     api.createIdea(Object.assign({}, f, { digital_pillar:f.digital_pillar||null, urgency:f.urgency||null,
       requester_id:p.profile.id, stage:'L0 Submitted' }))
       .then(function(idea){ dn[1](idea); bz[1](false); window.scrollTo(0,0); })
-      .catch(function(err){ er[1](err.message); bz[1](false); });
+      .catch(function(err){ er[1](userErrorMessage(err)); bz[1](false); });
   }
   if (submitted) {
     return html`<div style="max-width:640px">
@@ -702,7 +720,7 @@ function IdeationBoard(p) {
     });
   }, [ideas.data, flt]);
   if (ideas.loading) return html`<p>Loading…</p>`;
-  if (ideas.error) return html`<p style="color:var(--red)">${ideas.error.message}</p>`;
+  if (ideas.error) return html`<p style="color:var(--red)">${userErrorMessage(ideas.error)}</p>`;
 
   function KCard(props) {
     var i = props.i;
@@ -839,7 +857,7 @@ function MyIdeasPage(p) {
   var ideas = useAsync(api.listIdeas, []);
   var docs = useAsync(api.listMyDocs, []);
   if (ideas.loading || docs.loading) return html`<p>Loading…</p>`;
-  if (ideas.error) return html`<p style="color:var(--red)">${ideas.error.message}</p>`;
+  if (ideas.error) return html`<p style="color:var(--red)">${userErrorMessage(ideas.error)}</p>`;
   var mine = (ideas.data || []).filter(function(i){ return i.requester_id === p.auth.profile.id; });
   var bcs = (docs.data && docs.data.bcs) || [], chs = (docs.data && docs.data.charters) || [];
   function nextAction(i, bc, ch) {
@@ -897,7 +915,7 @@ function IdeaDetail(p) {
   var cm = useState(''), bz = useState(false), er = useState(null);
 
   if (idea.loading) return html`<p>Loading…</p>`;
-  if (idea.error) return html`<p style="color:var(--red)">${idea.error.message}</p>`;
+  if (idea.error) return html`<p style="color:var(--red)">${userErrorMessage(idea.error)}</p>`;
   var i = idea.data;
   var isPMTT = auth.isPMTT, isPM = auth.isPM;
   var ideaDecisions = (decisions.data||[]).filter(function(d){return d.related_id === i.idea_id});
@@ -909,12 +927,12 @@ function IdeaDetail(p) {
   function save(fields) {
     bz[1](true); er[1](null);
     return api.updateIdea(i.id, fields).then(function(){ idea.reload(); })
-      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+      .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
   }
   function doQualify() {
     bz[1](true); er[1](null);
     api.qualifyIdea(i.id).then(function(){ setModal(null); reloadAll(); })
-      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+      .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
   }
   function moveStage(stage){ save({stage:stage}).then(function(){ setModal(null); activity.reload(); }); }
   function postComment() {
@@ -1046,7 +1064,7 @@ function GateBox(p) {
         : outcome === 'Rework' ? 'L2 BC/Charter' : null;
       return next ? api.updateIdea(i.id, { stage: next }) : null;
     }).then(function(){ p.onDone(); })
-      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+      .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
   }
   return html`<div class="card" style="border-left:4px solid var(--purple)">
     <h2>⚖️ G1 Gate decision — ${cm[0]}</h2>
@@ -1128,7 +1146,7 @@ function ReasonModal(p) {
       .then(function(){ return api.addComment('Idea', p.i.id, p.auth.profile.id,
         (isReject ? 'Rejected: ' : 'Put on hold: ') + rs[0].trim()); })
       .then(function(){ p.onDone(); })
-      .catch(function(e){ er[1](e.message); bz[1](false); });
+      .catch(function(e){ er[1](userErrorMessage(e)); bz[1](false); });
   }
   return html`<${Modal} title=${(isReject ? 'Reject ' : 'Put on hold ') + p.i.idea_id} onClose=${p.onClose}>
     <${Field} label="Reason *" hint="recorded in the idea history — required for governance traceability">
@@ -1143,7 +1161,7 @@ function ConvertModal(p) {
   function convert() {
     bz[1](true); er[1](null);
     api.convertToProject(p.i.id, pid[0].trim(), lead[0].trim()).then(p.onDone)
-      .catch(function(e){ er[1](e.message); bz[1](false); });
+      .catch(function(e){ er[1](userErrorMessage(e)); bz[1](false); });
   }
   return html`<${Modal} title="Convert initiative to project (G1 → S1)" onClose=${p.onClose}>
     <${Checklist} items=${criteria} />
@@ -1352,7 +1370,7 @@ function LeanDocEditor(p) {
     chain.then(function(){
       return p.docType === 'business_case' ? api.updateBC(doc.id, fields) : api.updateCharter(doc.id, fields);
     }).then(function(){ p.onSaved(); versions.reload(); })
-      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+      .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
   }
 
   function renderField(fl) {
@@ -1511,7 +1529,7 @@ function DecisionModal(p) {
       decision_notes:f.decision_notes||null, next_action:f.next_action||null, next_steerco:!!f.next_steerco,
       owner_id:f.owner_id||null, action_owner_id:f.action_owner_id||null };
     var pr = p.decision ? api.updateDecision(p.decision.id, payload) : api.createDecision(payload);
-    pr.then(p.onSaved).catch(function(e){ er[1](e.message); bz[1](false); });
+    pr.then(p.onSaved).catch(function(e){ er[1](userErrorMessage(e)); bz[1](false); });
   }
   function psel(label,key) {
     return html`<${Field} label=${label}>
@@ -1587,7 +1605,7 @@ function ProjectDetailPage(p) {
     bz[1](true); er[1](null);
     api.updateProject(pr.id, { needs_attention: naVal || null })
       .then(function(){ projects.reload(); })
-      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+      .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
   }
   function row(k, v) { return html`<tr key=${k}><td class="muted small" style="width:170px">${k}</td><td>${v != null && v !== '' ? v : '—'}</td></tr>`; }
   function statusBadge(v) {
@@ -2333,9 +2351,9 @@ function AdminPage(p) {
   function run(promise) {
     bz[1](true); er[1](null);
     return promise.then(function(){ refs.reload(); settings.reload(); if (p.onRefChange) p.onRefChange(); })
-      .catch(function(e){ er[1](e.message); }).finally(function(){ bz[1](false); });
+      .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
   }
-  function setRole(id, role){ api.updateProfileRole(id, role).then(profiles.reload).catch(function(e){ er[1](e.message); }); }
+  function setRole(id, role){ api.updateProfileRole(id, role).then(profiles.reload).catch(function(e){ er[1](userErrorMessage(e)); }); }
   function addRef(cat) {
     var v = (newVal[0][cat] || '').trim();
     if (!v) return;
@@ -2518,6 +2536,7 @@ function App() {
       <div class="foot">
         ${profile.name}<br />
         <span style="text-transform:capitalize">${profile.role.replace(/_/g,' ')}</span><br />
+        <span class="small">v${APP_VERSION}</span><br />
         <a style="color:#8892ab" onClick=${function(){api.signOut()}}>Sign out</a>
       </div>
     </aside>
