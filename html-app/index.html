@@ -90,7 +90,18 @@ table.data tr:hover td{background:#fafbfd}
 .bubble-tip{position:absolute;background:#101a33;color:#fff;padding:6px 10px;border-radius:7px;font-size:12px;pointer-events:none;z-index:5}
 .landing{min-height:100vh;background:#fff;color:var(--text)}
 .landing .wrap{max-width:1180px;margin:0 auto;padding:34px 24px 54px}
+.landing .wrap.narrow{max-width:920px}
 .landing .hero{background:#050505;color:#fff;border-radius:0;padding:38px 42px;margin-bottom:24px;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:32px;align-items:center}
+.landing .split-hero{min-height:calc(100vh - 88px);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:stretch}
+.landing .entry{background:#fff;border:1px solid var(--border);border-radius:8px;padding:28px;display:flex;flex-direction:column;justify-content:space-between;min-height:420px}
+.landing .entry.dark{background:#050505;color:#fff;border-color:#050505}
+.landing .entry.dark h1,.landing .entry.dark h2{color:#fff}
+.landing .entry h1{font-size:34px;color:var(--text);margin:12px 0 12px;line-height:1.08}
+.landing .entry h2{font-size:24px;color:var(--text);margin:0 0 10px}
+.landing .entry p{font-size:15px;color:var(--muted);line-height:1.48;margin:0 0 18px}
+.landing .entry.dark p{color:#e7e7e7}
+.landing .entry ul{margin:0 0 22px;padding-left:18px;color:var(--muted);line-height:1.7}
+.landing .entry.dark ul{color:#e7e7e7}
 .landing .mark{width:58px;height:58px;background:var(--accent);margin-bottom:24px}
 .landing .kicker{font-size:12.5px;letter-spacing:1.5px;text-transform:uppercase;color:#ffdddb;margin:0 0 10px;font-weight:700}
 .landing h1{font-size:42px;color:#fff;margin:0 0 12px;line-height:1.08;max-width:760px}
@@ -108,7 +119,7 @@ table.data tr:hover td{background:#fafbfd}
 .landing .role-panel b{display:block;color:#050505;font-size:14px;margin-bottom:5px}
 .landing .role-panel p{color:var(--muted);font-size:12.5px;line-height:1.45;margin:0 0 14px}
 .landing .role-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:34px}
-@media(max-width:820px){.landing .hero{grid-template-columns:1fr;padding:28px 24px}.landing h1{font-size:32px}.landing .role-grid{grid-template-columns:1fr}}
+@media(max-width:820px){.landing .hero,.landing .split-hero{grid-template-columns:1fr;padding:28px 24px}.landing h1{font-size:32px}.landing .role-grid{grid-template-columns:1fr}.landing .entry{min-height:0}}
 .stepper{display:flex;margin:18px 0 16px;padding:0 8px}
 .step{flex:1;text-align:center;position:relative;font-size:12px;color:var(--muted);min-width:72px;display:flex;flex-direction:column;align-items:center;gap:7px}
 .step:not(:last-child)::after{content:"";position:absolute;top:15px;left:calc(50% + 22px);width:calc(100% - 44px);height:4px;background:#e2e5ea;border-radius:999px;z-index:0}
@@ -138,7 +149,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.21.10';
+var APP_VERSION = '2026.07.21.11';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -154,7 +165,7 @@ var OUTCOMES = ['Go','No-Go','Rework','Hold'];
 var DOC_STATUSES = ['Draft','In Review','Ready for Gate','Approved','Rework'];
 var PROJECT_STAGES = ['S1 (Scoping)','G2 (Business Case)','S2 (Planning)','G3 (Action Plan)','S3 (Execution)','G4 (Implementation)','S4 (Verification)','G5 (Closed)'];
 var ROLES = [
-  { value:'requester', label:'Requester' }, { value:'program_manager', label:'Program Manager' },
+  { value:'requester', label:'Idea Owner' }, { value:'program_manager', label:'Program Manager' },
   { value:'transformation_team', label:'Digital Team' }, { value:'project_lead', label:'Project Manager' }];
 var TRIAGE_SLA_DAYS = 7;
 var GATE_READY_PCT = 80;
@@ -290,6 +301,10 @@ function profileLabel(pr) {
 function projectManagerLabel(p) {
   if (p && p.manager) return profileLabel(p.manager);
   return (p && p.project_lead) || 'Unassigned';
+}
+function roleLabel(role) {
+  var r = ROLES.find(function(x){ return x.value === role; });
+  return r ? r.label : String(role || '').replace(/_/g, ' ');
 }
 
 /* ================= Data access layer (Supabase) ================= */
@@ -556,73 +571,92 @@ function Login(p) {
       ${mode === 'signup' && html`Have an account? <a onClick=${function(){setMode('signin')}}>Sign in</a> · <a onClick=${function(){setMode('magic')}}>Sign in without password</a>`}
       ${mode === 'magic' && html`<a onClick=${function(){setMode('signin')}}>← Use a password instead</a>`}
     </p>
-    <p class="small" style="text-align:center;margin-bottom:0"><a onClick=${function(){nav('/welcome')}}>← About the program</a></p>
+    <p class="small" style="text-align:center;margin-bottom:0"><a onClick=${function(){nav('/welcome')}}>← Back to home</a></p>
   </div></div>`;
 }
 
-/* ================= Public landing (normal app gateway) ================= */
-var LANDING_ROLES = [
-  ['Idea owner / requester', 'Submit a digitalization idea, complete the starter kit when requested, and follow decisions from My Ideas.', '/ideas/new', 'Submit an idea', true],
-  ['Program Manager / Digital Team', 'Steer the portfolio from the cockpit: exceptions, gate-ready packages, decisions, alerts and governance preparation.', '/cockpit', 'Sign in to cockpit', false],
-  ['Project Manager', 'Open assigned projects, linked initiatives, review preparation and delivery details from the project workspace.', '/projects', 'Sign in to workspace', false] ];
-var LANDING_STEPS = [
-  ['01','Submit your idea','About 5 minutes, in plain language: the problem, who it affects, and the benefit you expect.'],
-  ['02','Digital Team triage','Scope, duplicates, pillar fit and ownership are checked before qualification.'],
-  ['03','Complete the kit','Qualified ideas unlock a guided Business Case and Project Charter.'],
-  ['04','Committee decision','The right forum records Go, Rework, Hold or No-Go with the reason.'],
-  ['05','Project execution','Approved ideas are converted into projects and tracked in the cockpit.']];
+/* ================= Public entry portals ================= */
 function LandingPage() {
+  return html`<div class="landing"><div class="wrap">
+    <div class="split-hero">
+      <section class="entry">
+        <${PulseLogo} />
+        <div>
+          <p class="kicker">Idea Portal</p>
+          <h1>For Idea Owners</h1>
+          <p>Submit a digitalization idea, then follow its triage, kit preparation and committee decision in a dedicated space.</p>
+        </div>
+        <div class="cta-row">
+          <button class="btn big" onClick=${function(){nav('/idea-portal')}}>Open Idea Portal</button>
+        </div>
+      </section>
+      <section class="entry dark">
+        <${PulseLogo} />
+        <div>
+          <p class="kicker">Cockpit App</p>
+          <h1>For Digital Transformation teams</h1>
+          <p>Manage portfolio steering, triage, governance documents, decisions, project reviews and assignments.</p>
+        </div>
+        <div class="cta-row">
+          <button class="btn big" onClick=${function(){nav('/cockpit-portal')}}>Open Cockpit App</button>
+        </div>
+      </section>
+    </div>
+  </div></div>`;
+}
+function IdeaPortalLanding() {
   function goSubmit() {
     try { sessionStorage.setItem('postLoginRoute', '/ideas/new'); } catch(e){}
     nav('/signup');
   }
-  function goLogin() {
+  function goTrack() {
+    try { sessionStorage.setItem('postLoginRoute', '/my-ideas'); } catch(e){}
     nav('/login');
   }
-  return html`<div class="landing"><div class="wrap">
-    <div class="hero">
+  return html`<div class="landing"><div class="wrap narrow">
+    <p class="small"><a onClick=${function(){nav('/welcome')}}>Back to home</a></p>
+    <section class="entry">
+      <${PulseLogo} />
       <div>
-        <${PulseLogo} />
-        <p class="kicker">Digital Transformation</p>
-        <h1>Digital Pulse</h1>
-        <p class="sub">One entry point for ideas, portfolio steering, governance decisions and project follow-up. Choose your path, then the app routes you to the right workspace after sign-in.</p>
-        <div class="cta-row">
-          <button class="btn big" onClick=${goSubmit}>Submit an idea</button>
-          <button class="btn secondary big" onClick=${goLogin}>Sign in to cockpit</button>
-        </div>
+        <p class="kicker">Idea Portal</p>
+        <h1>Idea Owner space</h1>
+        <p>Use this portal to submit an idea in plain language and follow what happens next. Rough estimates are enough at the start.</p>
+        <ul>
+          <li>Submit a new idea in about 5 minutes</li>
+          <li>Track triage, qualification and committee outcome</li>
+          <li>Complete the starter kit only if the idea is qualified</li>
+        </ul>
       </div>
-      <div class="role-panel">
-        <b>Normal access rule</b>
-        <p>Public visitors see this gateway. After login, requesters land on My Ideas, Program Manager and Digital Team land on Cockpit, Project Managers land on their operational workspace.</p>
-        <button class="btn secondary small" onClick=${goLogin}>I already have an account</button>
+      <div class="cta-row">
+        <button class="btn big" onClick=${goSubmit}>Submit an idea</button>
+        <button class="btn secondary big" onClick=${goTrack}>Track my ideas</button>
       </div>
-    </div>
-    <h2>Choose your workspace</h2>
-    <div class="role-grid">
-      ${LANDING_ROLES.map(function(r) {
-        return html`<div class="role-panel" key=${r[0]}>
-          <b>${r[0]}</b>
-          <p>${r[1]}</p>
-          <button class=${r[4] ? 'btn' : 'btn secondary'} onClick=${function(){ r[4] ? goSubmit() : goLogin(); }}>${r[3]}</button>
-        </div>`; })}
-    </div>
-    <h2>Idea journey</h2>
-    <div class="lcards">
-      ${LANDING_STEPS.map(function(s, i) {
-        return html`<div class="lcard" key=${i}>
-          <span class="ic">${s[0]}</span><b>${s[1]}</b><p>${s[2]}</p>
-        </div>`; })}
-    </div>
-    <h2>Why sign in?</h2>
-    <div class="lcards" style="grid-template-columns:repeat(auto-fit,minmax(250px,1fr))">
-      <div class="lcard"><span class="ic">A</span><b>Action-based cockpit</b>
-        <p>Focus on decisions, SLA breaches, gate-ready packages, alerts and portfolio exposure.</p></div>
-      <div class="lcard"><span class="ic">B</span><b>Requester follow-up</b>
-        <p>Idea owners see what is happening, what is needed from them and how decisions are recorded.</p></div>
-      <div class="lcard"><span class="ic">C</span><b>Governance memory</b>
-        <p>Business cases, charters and decision logs stay linked from idea to project.</p></div>
-    </div>
-    <p class="small muted">Questions? Contact the Digital Transformation team.</p>
+    </section>
+  </div></div>`;
+}
+function CockpitPortalLanding() {
+  function goCockpit() {
+    try { sessionStorage.setItem('postLoginRoute', '/cockpit'); } catch(e){}
+    nav('/login');
+  }
+  return html`<div class="landing"><div class="wrap narrow">
+    <p class="small"><a onClick=${function(){nav('/welcome')}}>Back to home</a></p>
+    <section class="entry dark">
+      <${PulseLogo} />
+      <div>
+        <p class="kicker">Cockpit App</p>
+        <h1>Portfolio and governance workspace</h1>
+        <p>This workspace is for Program Managers, Digital Transformation team members and Project Managers.</p>
+        <ul>
+          <li>Review and qualify submitted ideas</li>
+          <li>Prepare Business Cases, Charters and decisions</li>
+          <li>Assign projects and follow delivery signals</li>
+        </ul>
+      </div>
+      <div class="cta-row">
+        <button class="btn big" onClick=${goCockpit}>Sign in to cockpit</button>
+      </div>
+    </section>
   </div></div>`;
 }
 
@@ -792,7 +826,7 @@ function IdeationBoard(p) {
           ${items.map(function(i){return html`<${KCard} key=${i.id} i=${i} />`})}</div>`; })}
     </div>`}
     ${view === 'table' && html`<div class="card" style="overflow-x:auto"><table class="data">
-      <thead><tr><th>ID</th><th>Title</th><th>Stage</th><th>Pillar</th><th>Requester</th><th>Flags</th><th>Committee</th><th>Updated</th></tr></thead>
+      <thead><tr><th>ID</th><th>Title</th><th>Stage</th><th>Pillar</th><th>Idea Owner</th><th>Flags</th><th>Committee</th><th>Updated</th></tr></thead>
       <tbody>${filtered.map(function(i){
         return html`<tr key=${i.id}>
           <td><${A} href=${'/ideas/'+i.id}>${i.idea_id}<//></td>
@@ -806,7 +840,7 @@ function IdeationBoard(p) {
     ${view === 'archive' && html`<div class="card" style="overflow-x:auto">
       <h2>Archive — rejected & on-hold ideas</h2>
       <table class="data">
-        <thead><tr><th>ID</th><th>Title</th><th>Stage</th><th>Pillar</th><th>Requester</th><th>Reason</th><th>Updated</th></tr></thead>
+        <thead><tr><th>ID</th><th>Title</th><th>Stage</th><th>Pillar</th><th>Idea Owner</th><th>Reason</th><th>Updated</th></tr></thead>
         <tbody>${(ideas.data||[]).filter(function(i){return i.stage==='Rejected'||i.stage==='Hold'}).map(function(i){
           return html`<tr key=${i.id}>
             <td><${A} href=${'/ideas/'+i.id}>${i.idea_id}<//></td>
@@ -1250,7 +1284,7 @@ var BC_LEAN = {
 };
 var CH_LEAN = {
   titlePrefix: 'Lean Project Charter',
-  guide: 'Target time: 10-15 minutes after the idea is qualified. The Requester provides the business content; the Project Manager and Digital Team confirm delivery details.',
+  guide: 'Target time: 10-15 minutes after the idea is qualified. The Idea Owner provides the business content; the Project Manager and Digital Team confirm delivery details.',
   sections: [
     { title: '1. Purpose and success', guidance: 'Define what will be different for the business, for whom and by when.',
       fields: [
@@ -1270,7 +1304,7 @@ var CH_LEAN = {
     { title: '3. Roles and governance', guidance: 'Assign one accountable person for business value and one for delivery. Keep the decision path simple.',
       fields: [
         { key:'col:sponsor', label:'Sponsor', hint:'removes major barriers and approves material changes' },
-        { key:'col:business_owner', label:'Requester / Business owner', hint:'owns the need, priorities, acceptance and benefits' },
+        { key:'col:business_owner', label:'Idea Owner / Business owner', hint:'owns the need, priorities, acceptance and benefits' },
         { key:'col:project_lead', label:'Project Manager', hint:'owns planning, coordination, risks and delivery', required:true },
         { key:'core_contributors', label:'Core contributors', hint:'functions or named people required' },
         { key:'decision_path', label:'Decision and escalation path', hint:'who decides what, at which forum and when to escalate', required:true },
@@ -1356,7 +1390,7 @@ function ApprovalsPanel(p) {
   var committee = ideaDecs.filter(function(d){ return d.status === 'Decided' && d.outcome; })
     .sort(function(a,b){ return new Date(b.decision_date||b.updated_at) - new Date(a.decision_date||a.updated_at); })[0];
   var rows = [
-    ['Requester', (p.idea.requester && p.idea.requester.name) || '—', 'Submitted', fmtDate(p.idea.submitted_date)],
+    ['Idea Owner', (p.idea.requester && p.idea.requester.name) || '—', 'Submitted', fmtDate(p.idea.submitted_date)],
     ['Digital Team / Program Manager', '—', p.doc.status, fmtDate(p.doc.updated_at)],
     ['Decision forum', (committee && committee.committee_target) || p.idea.committee_target || 'To be routed',
       committee ? committee.outcome : 'Pending', committee ? fmtDate(committee.decision_date) : '—'] ];
@@ -2574,6 +2608,8 @@ function App() {
   if (session === undefined) return html`<div style="padding:40px">Loading…</div>`;
   if (!session) {
     if (route === '/' || route === '/welcome') return html`<${LandingPage} />`;
+    if (route === '/idea-portal') return html`<${IdeaPortalLanding} />`;
+    if (route === '/cockpit-portal') return html`<${CockpitPortalLanding} />`;
     if (route === '/signup') return html`<${Login} initialMode="signup" />`;
     if (route !== '/login') {
       // Deep link (e.g. from an email) — remember it and resume after sign-in.
@@ -2590,7 +2626,7 @@ function App() {
 
   var m;
   var page;
-  if (route === '/' || route === '/welcome' || route === '/login' || route === '/signup') {
+  if (route === '/' || route === '/welcome' || route === '/idea-portal' || route === '/cockpit-portal' || route === '/login' || route === '/signup') {
     nav(defaultRoute); page = html`<div />`;
   }
   else if ((route === '/cockpit' || route === '/decisions' || route === '/reviews' || route === '/import-export') && !isPMTT) {
@@ -2638,7 +2674,7 @@ function App() {
       </nav>
       <div class="foot">
         ${profile.name}<br />
-        <span style="text-transform:capitalize">${profile.role.replace(/_/g,' ')}</span><br />
+        <span>${roleLabel(profile.role)}</span><br />
         <span class="small">v${APP_VERSION}</span><br />
         <a style="color:#8892ab" onClick=${function(){api.signOut()}}>Sign out</a>
       </div>
