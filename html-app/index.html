@@ -149,7 +149,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.21.12';
+var APP_VERSION = '2026.07.21.13';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -263,7 +263,7 @@ function g1Criteria(i, bc, ch) {
     { label:'Rough budget / effort estimate documented', ok:!!bcc.estimated_cost },
     { label:'Benefits and success measures documented', ok:!!(bcc.expected_benefits && (bcc.kpis||[]).length) },
     { label:'Scope in / scope out documented', ok:!!(chc.in_scope && chc.out_scope) },
-    { label:'Risks, dependencies, assumptions documented', ok:!!((bcc.risks||[]).length && bcc.critical_assumption) },
+    { label:'Critical assumption or risk documented', ok:!!bcc.critical_assumption },
     { label:'Project Manager (lead) proposed', ok:!!(ch && ch.project_lead) },
     { label:'Committee target selected', ok:!!(i.committee_target || (bc && bc.committee_target)) }];
 }
@@ -1242,43 +1242,30 @@ function ConvertModal(p) {
 // Field kinds: text fields live in doc.content (jsonb); 'col:' fields map to table columns.
 var BC_LEAN = {
   titlePrefix: 'Lean Business Case',
-  guide: 'Idea Owners provide business context only. The Digital Team / Program Manager owns feasibility, cost, decision forum and recommendation.',
+  guide: 'Keep it decision-grade, not project-grade: enough context, value, cost, risk and recommendation to decide the next gate.',
   sections: [
-    { title: '1. Business context - Idea Owner input', guidance: 'Describe the need in plain language. Focus on the user and business problem before the technology.',
+    { title: '1. Business signal - Idea Owner input', guidance: 'Capture the need and value signal. This is intentionally short; the team will challenge and mature it.',
       fields: [
         { key:'problem', label:'Problem / opportunity', hint:'what is not working or what opportunity is being missed', required:true, ta:true },
-        { key:'who_affected', label:'Who is affected', hint:'teams, users, customers, sites or processes', required:true, ownerInput:true },
-        { key:'current_way', label:'Current way of working', hint:'how the need is handled today and where the friction occurs', ta:true },
-        { key:'evidence', label:'Evidence or example', hint:'one fact, example, volume or user observation' },
-        { key:'why_now', label:'Why now', hint:'urgency, trigger or consequence of waiting', required:true, ta:true } ] },
-    { title: '2. Value and success - Idea Owner input', guidance: 'Keep estimates directional. The team will challenge and mature them before governance.',
-      fields: [
         { key:'expected_benefits', label:'Expected benefits', hint:'time, quality, cost, safety, compliance, experience or revenue', required:true, ta:true },
-        { key:'estimated_value', label:'Estimated value', hint:'annual value or qualitative impact, with the basis of estimate', required:true } ],
+        { key:'estimated_value', label:'Estimated value', hint:'annual value or qualitative impact, with the basis of estimate', required:true },
+        { key:'evidence', label:'Evidence or example', hint:'one fact, example, volume or user observation' } ],
       tables: [ { key:'kpis', label:'Success measures', required:true,
-        cols:[ {k:'measure', l:'Success measure'}, {k:'baseline', l:'Current baseline'}, {k:'target', l:'Target'}, {k:'when', l:'When measured'} ] } ] },
-    { title: '3. Digital assessment - Digital Team / Program Manager', guidance: 'Assess feasibility, options, delivery effort and risk. This is not expected from the Idea Owner.',
+        cols:[ {k:'measure', l:'Measure'}, {k:'baseline', l:'Baseline'}, {k:'target', l:'Target'} ] } ] },
+    { title: '2. Digital assessment - Digital Team / Program Manager', guidance: 'One pragmatic delivery view. Avoid solution-design detail; capture only what affects the decision.',
       fields: [
-        { key:'proposed_solution', label:'Proposed solution', hint:'recommended delivery approach or minimum viable solution', required:true, ta:true, pmOnly:true },
-        { key:'alternative', label:'Alternative / do nothing option', hint:'status quo or another option and why it is less suitable', pmOnly:true },
-        { key:'systems_data', label:'Systems and data needed', hint:'systems, interfaces, data access or architecture needs', required:true, pmOnly:true },
-        { key:'estimated_cost', label:'Estimated cost / effort', hint:'one-time cost, recurring cost and internal effort range', required:true, pmOnly:true },
-        { key:'resources_needed', label:'People or resources needed', hint:'key roles, skills or external support', pmOnly:true },
-        { key:'key_dependency', label:'Key dependency', hint:'team, supplier, decision or related initiative required', pmOnly:true },
-        { key:'critical_assumption', label:'Critical assumption', hint:'what must be true for value or feasibility to hold', required:true, pmOnly:true },
-        { key:'confidence', label:'Assessment confidence', hint:'High / Medium / Low and the main reason', select:['High','Medium','Low'], pmOnly:true } ],
-      tables: [ { key:'risks', label:'Main risks', required:true,
-        pmOnly:true,
-        cols:[ {k:'risk', l:'Main risk'}, {k:'impact', l:'Impact', select:['High','Medium','Low']}, {k:'mitigation', l:'Mitigation or next check'}, {k:'owner', l:'Owner'} ] } ] },
-    { title: '4. Governance recommendation - Digital Team / Program Manager', guidance: 'The Program Manager / Digital Team prepares the governance recommendation and routes it to the right forum.',
+        { key:'proposed_solution', label:'Recommended approach', hint:'MVP or first delivery step, not the full design', required:true, ta:true, pmOnly:true },
+        { key:'alternative', label:'Do nothing / alternative', hint:'what happens if we do not invest, or another option considered', pmOnly:true },
+        { key:'estimated_cost', label:'Cost / effort range', hint:'rough one-time cost, recurring cost and internal effort range', required:true, pmOnly:true },
+        { key:'systems_data', label:'Key feasibility point', hint:'main system, data, architecture or dependency point', pmOnly:true },
+        { key:'critical_assumption', label:'Critical assumption or risk', hint:'the one thing that could change the recommendation', required:true, pmOnly:true },
+        { key:'confidence', label:'Confidence', hint:'High / Medium / Low', select:['High','Medium','Low'], pmOnly:true } ] },
+    { title: '3. Gate recommendation - Digital Team / Program Manager', guidance: 'This is the decision pack: recommendation, forum and conditions. The Decision Log remains the formal record.',
       fields: [
-        { key:'decision_requested', label:'Decision requested', hint:'the exact decision required from the committee', required:true, ta:true, pmOnly:true },
         { key:'col:recommendation', label:'Recommendation', hint:'Go / No-Go / Rework / Hold', required:true, select:['Go','No-Go','Rework','Hold'], pmOnly:true },
         { key:'col:committee_target', label:'Decision forum', hint:'the forum that should decide this case', required:true, select:['Pillar SteerCo','Digitalization SteerCo'], pmOnly:true },
-        { key:'summary', label:'Recommendation summary', hint:'one paragraph linking need, value, feasibility and risk', required:true, ta:true, pmOnly:true },
-        { key:'to_confirm', label:'What still needs confirmation', hint:'information to validate before or during the next stage', pmOnly:true },
-        { key:'conditions', label:'Proposed conditions', hint:'conditions that should accompany approval', pmOnly:true },
-        { key:'decision_wording', label:'Proposed decision wording', hint:'Approve / Rework / Hold / Reject, scope and conditions', required:true, pmOnly:true } ],
+        { key:'summary', label:'Rationale', hint:'one short paragraph linking need, value, effort and risk', required:true, ta:true, pmOnly:true },
+        { key:'conditions', label:'Conditions / next check', hint:'approval condition, rework request or validation to run next', pmOnly:true } ],
       approvals: true } ]
 };
 var CH_LEAN = {
