@@ -1,5 +1,5 @@
 -- ============================================================
--- PWT Digital Pulse - Supabase schema (MVP)
+-- Digital Pulse - Supabase schema (MVP)
 -- Run this in the Supabase SQL editor of a fresh project.
 -- ============================================================
 
@@ -903,6 +903,6 @@ begin
   values (new.id, coalesce(new.raw_user_meta_data->>'name', split_part(new.email,'@',1)), new.email);
   insert into public.notifications (recipient_id, type, message)
   values (new.id, 'Welcome',
-    'Welcome to PWT Digital Pulse! Submit your idea in about 5 minutes, then track its progress here - you will be notified at every step.');
+    'Welcome to Digital Pulse! Submit your idea in about 5 minutes, then track its progress here - you will be notified at every step.');
   return new;
 end; $$;

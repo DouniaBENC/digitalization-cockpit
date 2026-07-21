@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
       <p>Hello ${profile.name || ""},</p>
       <p>${n.message}</p>
       ${APP_URL ? `<p><a href="${APP_URL}" style="background:#1f4fd8;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none">Open the Digitalization Cockpit</a></p>` : ""}
-      <p style="color:#66708a;font-size:12px">You receive this email because you submitted an idea to the PWT Digitalization Program. Follow the full status anytime in the app.</p>
+      <p style="color:#66708a;font-size:12px">You receive this email because you submitted an idea to Digital Pulse. Follow the full status anytime in the app.</p>
     </div>`;
 
   const res = await fetch("https://api.resend.com/emails", {

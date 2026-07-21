@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<title>PWT Digital Pulse</title>
+<title>Digital Pulse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -138,7 +138,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.21.9';
+var APP_VERSION = '2026.07.21.10';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -445,7 +445,7 @@ function userErrorMessage(e) {
   var msg = (e && e.message) ? e.message : String(e || 'Unknown error');
   var low = msg.toLowerCase();
   if (low.indexOf('status_reason') >= 0 || low.indexOf('has no field') >= 0) {
-    return 'This action could not be completed because your browser is running an older version of PWT Digital Pulse. Please refresh with Ctrl+F5, then try again. If it still appears, contact the Digital Transformation team.';
+    return 'This action could not be completed because your browser is running an older version of Digital Pulse. Please refresh with Ctrl+F5, then try again. If it still appears, contact the Digital Transformation team.';
   }
   if (low.indexOf('project_manager_id') >= 0 || low.indexOf('schema cache') >= 0) {
     return 'The project assignment database update has not been applied yet. Ask a Program Manager/Admin to run migration 8 in Supabase SQL Editor, then refresh the app.';
@@ -490,7 +490,7 @@ function Progress(p) {
 }
 function RoadmapNote(){ return html`<div class="roadmap-note">🔮 <b>Roadmap:</b> ${ROADMAP_NOTE}</div>`; }
 function PulseLogo() {
-  return html`<svg class="pulse-logo" viewBox="0 0 64 64" aria-label="PWT Digital Pulse logo">
+  return html`<svg class="pulse-logo" viewBox="0 0 64 64" aria-label="Digital Pulse logo">
     <rect x="1" y="1" width="62" height="62" rx="10" fill="#050505"></rect>
     <path class="pulse-line" d="M8 34 H19 L25 19 L33 47 L40 28 L45 34 H56"></path>
   </svg>`;
@@ -541,7 +541,7 @@ function Login(p) {
     : mode === 'magic' ? 'No password needed — we email you a one-click sign-in link'
     : 'Governance preparation & portfolio steering';
   return html`<div class="login-wrap"><div class="login-card">
-    <h1 style="margin-bottom:4px">PWT Digital Pulse</h1>
+    <h1 style="margin-bottom:4px">Digital Pulse</h1>
     <p class="muted small" style="margin-top:0">${sub}</p>
     <form onSubmit=${submit}>
       ${mode === 'signup' && html`<div class="field"><label>Name</label><input type="text" value=${nm[0]} onInput=${function(e){nm[1](e.target.value)}} required /></div>`}
@@ -583,8 +583,8 @@ function LandingPage() {
     <div class="hero">
       <div>
         <${PulseLogo} />
-        <p class="kicker">PWT Digital Transformation</p>
-        <h1>PWT Digital Pulse</h1>
+        <p class="kicker">Digital Transformation</p>
+        <h1>Digital Pulse</h1>
         <p class="sub">One entry point for ideas, portfolio steering, governance decisions and project follow-up. Choose your path, then the app routes you to the right workspace after sign-in.</p>
         <div class="cta-row">
           <button class="btn big" onClick=${goSubmit}>Submit an idea</button>
@@ -1204,7 +1204,7 @@ function ConvertModal(p) {
 }
 
 /* ================= Lean Doc editors (Business Case & Charter) ================= */
-// Structure from the PWT "Lean Governance Templates" pack (validated 2026-07).
+// Structure from the lean governance templates pack (validated 2026-07).
 // Field kinds: text fields live in doc.content (jsonb); 'col:' fields map to table columns.
 var BC_LEAN = {
   titlePrefix: 'Lean Business Case',
@@ -1225,7 +1225,7 @@ var BC_LEAN = {
         { key:'evidence', label:'Evidence or example', hint:'one fact, example, volume or user observation' },
         { key:'proposed_solution', label:'Proposed solution', hint:'the simplest solution that could address the need', required:true, ta:true },
         { key:'alternative', label:'Alternative considered', hint:'status quo or another option and why it is less suitable' } ] },
-    { title: '3. Value, cost and success', guidance: 'Ranges are acceptable. Explain the expected benefit and how PWT will know the idea worked.',
+    { title: '3. Value, cost and success', guidance: 'Ranges are acceptable. Explain the expected benefit and how the team will know the idea worked.',
       fields: [
         { key:'expected_benefits', label:'Expected benefits', hint:'time, quality, cost, safety, compliance, experience or revenue', required:true, ta:true },
         { key:'estimated_value', label:'Estimated value', hint:'annual value or qualitative impact, with the basis of estimate', required:true },
@@ -2040,7 +2040,7 @@ function exportSteercoPPT(I, P, D, chMap) {
   // Slide 1 - title + funnel
   var s1 = pres.addSlide();
   s1.addText('Digitalization SteerCo Pack', { x:0.5, y:2.2, w:12.3, h:1, fontSize:34, bold:true, color:INK });
-  s1.addText(today + '  ·  Generated by PWT Digital Pulse', { x:0.5, y:3.2, w:12.3, h:0.5, fontSize:14, color:GREY });
+  s1.addText(today + '  ·  Generated by Digital Pulse', { x:0.5, y:3.2, w:12.3, h:0.5, fontSize:14, color:GREY });
   var funnel = [
     ['Submitted', I.filter(function(i){return i.stage==='L0 Submitted'}).length],
     ['In triage', I.filter(function(i){return i.stage==='L0 Triage'}).length],
@@ -2624,7 +2624,7 @@ function App() {
   }
   return html`<div class="app">
     <aside class="sidebar">
-      <div class="brand"><${PulseLogo} /><span class="brand-title">PWT Digital<br />Pulse</span></div>
+      <div class="brand"><${PulseLogo} /><span class="brand-title">Digital<br />Pulse</span></div>
       <nav>
         ${isPMTT && navLink('/cockpit','📊 Cockpit')}
         ${profile.role === 'requester' ? navLink('/my-ideas','🏠 My Ideas') : navLink('/ideas','💡 Ideation Board')}
