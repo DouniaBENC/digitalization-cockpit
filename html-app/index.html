@@ -149,7 +149,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.21.11';
+var APP_VERSION = '2026.07.21.12';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -1242,44 +1242,43 @@ function ConvertModal(p) {
 // Field kinds: text fields live in doc.content (jsonb); 'col:' fields map to table columns.
 var BC_LEAN = {
   titlePrefix: 'Lean Business Case',
-  guide: 'Target time: 15 minutes. Use short answers and reasonable estimates. If information is unknown, write "To be confirmed" instead of inventing precision.',
+  guide: 'Idea Owners provide business context only. The Digital Team / Program Manager owns feasibility, cost, decision forum and recommendation.',
   sections: [
-    { title: '1. Decision and recommendation', guidance: 'Start with the answer. State what you want governance to decide and why this is the preferred path.',
+    { title: '1. Business context - Idea Owner input', guidance: 'Describe the need in plain language. Focus on the user and business problem before the technology.',
       fields: [
-        { key:'decision_requested', label:'Decision requested', hint:'the exact decision required from the committee', required:true, ta:true },
-        { key:'col:recommendation', label:'Your recommendation', hint:'Go / No-Go / Rework / Hold', required:true, select:['Go','No-Go','Rework','Hold'] },
-        { key:'why_now', label:'Why now', hint:'urgency, trigger or consequence of waiting', required:true, ta:true },
-        { key:'confidence', label:'Confidence', hint:'High / Medium / Low and the main reason', select:['High','Medium','Low'] },
-        { key:'col:committee_target', label:'Decision forum', select:['Pillar SteerCo','Digitalization SteerCo'] } ] },
-    { title: '2. Problem and proposed solution', guidance: 'Describe the need in plain language. Focus on the user and business problem before the technology.',
-      fields: [
-        { key:'problem', label:'Problem or opportunity', hint:'what is not working or what opportunity is being missed', required:true, ta:true },
-        { key:'who_affected', label:'Who is affected', hint:'teams, users, customers, sites or processes', required:true },
+        { key:'problem', label:'Problem / opportunity', hint:'what is not working or what opportunity is being missed', required:true, ta:true },
+        { key:'who_affected', label:'Who is affected', hint:'teams, users, customers, sites or processes', required:true, ownerInput:true },
         { key:'current_way', label:'Current way of working', hint:'how the need is handled today and where the friction occurs', ta:true },
         { key:'evidence', label:'Evidence or example', hint:'one fact, example, volume or user observation' },
-        { key:'proposed_solution', label:'Proposed solution', hint:'the simplest solution that could address the need', required:true, ta:true },
-        { key:'alternative', label:'Alternative considered', hint:'status quo or another option and why it is less suitable' } ] },
-    { title: '3. Value, cost and success', guidance: 'Ranges are acceptable. Explain the expected benefit and how the team will know the idea worked.',
+        { key:'why_now', label:'Why now', hint:'urgency, trigger or consequence of waiting', required:true, ta:true } ] },
+    { title: '2. Value and success - Idea Owner input', guidance: 'Keep estimates directional. The team will challenge and mature them before governance.',
       fields: [
         { key:'expected_benefits', label:'Expected benefits', hint:'time, quality, cost, safety, compliance, experience or revenue', required:true, ta:true },
-        { key:'estimated_value', label:'Estimated value', hint:'annual value or qualitative impact, with the basis of estimate', required:true },
-        { key:'estimated_cost', label:'Estimated cost', hint:'one-time cost, recurring cost and internal effort range', required:true },
-        { key:'resources_needed', label:'People or resources needed', hint:'key roles, skills or external support' } ],
+        { key:'estimated_value', label:'Estimated value', hint:'annual value or qualitative impact, with the basis of estimate', required:true } ],
       tables: [ { key:'kpis', label:'Success measures', required:true,
         cols:[ {k:'measure', l:'Success measure'}, {k:'baseline', l:'Current baseline'}, {k:'target', l:'Target'}, {k:'when', l:'When measured'} ] } ] },
-    { title: '4. Feasibility, risks and dependencies', guidance: 'List only the points that could materially affect the recommendation or timing.',
+    { title: '3. Digital assessment - Digital Team / Program Manager', guidance: 'Assess feasibility, options, delivery effort and risk. This is not expected from the Idea Owner.',
       fields: [
-        { key:'systems_data', label:'Systems and data needed', hint:'systems, interfaces, data access or architecture needs', required:true },
-        { key:'key_dependency', label:'Key dependency', hint:'team, supplier, decision or related initiative required' },
-        { key:'critical_assumption', label:'Critical assumption', hint:'what must be true for value or feasibility to hold', required:true } ],
+        { key:'proposed_solution', label:'Proposed solution', hint:'recommended delivery approach or minimum viable solution', required:true, ta:true, pmOnly:true },
+        { key:'alternative', label:'Alternative / do nothing option', hint:'status quo or another option and why it is less suitable', pmOnly:true },
+        { key:'systems_data', label:'Systems and data needed', hint:'systems, interfaces, data access or architecture needs', required:true, pmOnly:true },
+        { key:'estimated_cost', label:'Estimated cost / effort', hint:'one-time cost, recurring cost and internal effort range', required:true, pmOnly:true },
+        { key:'resources_needed', label:'People or resources needed', hint:'key roles, skills or external support', pmOnly:true },
+        { key:'key_dependency', label:'Key dependency', hint:'team, supplier, decision or related initiative required', pmOnly:true },
+        { key:'critical_assumption', label:'Critical assumption', hint:'what must be true for value or feasibility to hold', required:true, pmOnly:true },
+        { key:'confidence', label:'Assessment confidence', hint:'High / Medium / Low and the main reason', select:['High','Medium','Low'], pmOnly:true } ],
       tables: [ { key:'risks', label:'Main risks', required:true,
+        pmOnly:true,
         cols:[ {k:'risk', l:'Main risk'}, {k:'impact', l:'Impact', select:['High','Medium','Low']}, {k:'mitigation', l:'Mitigation or next check'}, {k:'owner', l:'Owner'} ] } ] },
-    { title: '5. Recommendation and approval', guidance: 'Close with the recommendation, remaining questions and the exact decision requested.',
+    { title: '4. Governance recommendation - Digital Team / Program Manager', guidance: 'The Program Manager / Digital Team prepares the governance recommendation and routes it to the right forum.',
       fields: [
-        { key:'summary', label:'Recommendation summary', hint:'one paragraph linking need, value, feasibility and risk', required:true, ta:true },
-        { key:'to_confirm', label:'What still needs confirmation', hint:'information to validate before or during the next stage' },
-        { key:'conditions', label:'Proposed conditions', hint:'conditions that should accompany approval' },
-        { key:'decision_wording', label:'Proposed decision wording', hint:'Approve / Rework / Hold / Reject, scope and conditions', required:true } ],
+        { key:'decision_requested', label:'Decision requested', hint:'the exact decision required from the committee', required:true, ta:true, pmOnly:true },
+        { key:'col:recommendation', label:'Recommendation', hint:'Go / No-Go / Rework / Hold', required:true, select:['Go','No-Go','Rework','Hold'], pmOnly:true },
+        { key:'col:committee_target', label:'Decision forum', hint:'the forum that should decide this case', required:true, select:['Pillar SteerCo','Digitalization SteerCo'], pmOnly:true },
+        { key:'summary', label:'Recommendation summary', hint:'one paragraph linking need, value, feasibility and risk', required:true, ta:true, pmOnly:true },
+        { key:'to_confirm', label:'What still needs confirmation', hint:'information to validate before or during the next stage', pmOnly:true },
+        { key:'conditions', label:'Proposed conditions', hint:'conditions that should accompany approval', pmOnly:true },
+        { key:'decision_wording', label:'Proposed decision wording', hint:'Approve / Rework / Hold / Reject, scope and conditions', required:true, pmOnly:true } ],
       approvals: true } ]
 };
 var CH_LEAN = {
@@ -1325,25 +1324,28 @@ function leanVal(doc, f, key) {
   if (key.indexOf('col:') === 0) return doc[key.slice(4)] || '';
   return (doc.content && doc.content[key]) || '';
 }
+function leanCompletenessFor(cfg, doc, include) {
+  var missing = [], done = 0, total = 0;
+  cfg.sections.forEach(function(sec) {
+    (sec.fields||[]).forEach(function(fl) {
+      if (!fl.required || (include && !include(fl))) return;
+      total++;
+      var v = leanVal(doc, fl, fl.key);
+      if (String(v).trim().length >= 3) done++; else missing.push(fl.label);
+    });
+    (sec.tables||[]).forEach(function(tb) {
+      if (!tb.required || (include && !include(tb))) return;
+      total++;
+      var rows = (doc.content && doc.content[tb.key]) || [];
+      var filled = rows.some(function(r){ return Object.keys(r).some(function(k){ return String(r[k]||'').trim().length >= 2; }); });
+      if (filled) done++; else missing.push(tb.label + ' (at least one row)');
+    });
+  });
+  return { done:done, total:total, pct: total ? Math.round(done/total*100) : 0, missing:missing };
+}
 function leanCompleteness(cfg) {
   return function(doc) {
-    var missing = [], done = 0, total = 0;
-    cfg.sections.forEach(function(sec) {
-      (sec.fields||[]).forEach(function(fl) {
-        if (!fl.required) return;
-        total++;
-        var v = leanVal(doc, fl, fl.key);
-        if (String(v).trim().length >= 3) done++; else missing.push(fl.label);
-      });
-      (sec.tables||[]).forEach(function(tb) {
-        if (!tb.required) return;
-        total++;
-        var rows = (doc.content && doc.content[tb.key]) || [];
-        var filled = rows.some(function(r){ return Object.keys(r).some(function(k){ return String(r[k]||'').trim().length >= 2; }); });
-        if (filled) done++; else missing.push(tb.label + ' (at least one row)');
-      });
-    });
-    return { done:done, total:total, pct: total ? Math.round(done/total*100) : 0, missing:missing };
+    return leanCompletenessFor(cfg, doc, null);
   };
 }
 var bcCompletenessLean = leanCompleteness(BC_LEAN);
@@ -1408,6 +1410,7 @@ function LeanDocEditor(p) {
   var isPMTT = p.auth.isPMTT;
   var isOwnerKit = !isPMTT && p.idea.requester_id === p.auth.profile.id;
   var canEdit = isPMTT || isOwnerKit;
+  function canEditItem(item) { return isPMTT || (isOwnerKit && !item.pmOnly); }
   var init = { status: doc.status, content: Object.assign({}, doc.content || {}) };
   cfg.sections.forEach(function(sec){ (sec.fields||[]).forEach(function(fl){
     if (fl.key.indexOf('col:') === 0) init[fl.key.slice(4)] = doc[fl.key.slice(4)] || ''; }); });
@@ -1419,6 +1422,9 @@ function LeanDocEditor(p) {
   var versions = useAsync(function(){ return api.listVersions(p.docType, doc.id); }, [doc.id]);
   var merged = Object.assign({}, doc, f, { content: f.content });
   var comp = p.completeness(merged);
+  var ownerComp = leanCompletenessFor(cfg, merged, function(item){ return !item.pmOnly; });
+  var actionComp = isOwnerKit ? ownerComp : comp;
+  if (isOwnerKit) comp = ownerComp;
   var readiness = comp.pct >= GATE_READY_PCT;
 
   function save(newVersion) {
@@ -1442,14 +1448,16 @@ function LeanDocEditor(p) {
     var k = isCol ? fl.key.slice(4) : fl.key;
     var v = isCol ? (f[k] || '') : (f.content[k] || '');
     var on = isCol ? function(e){ setCol(k, e.target.value); } : function(e){ setContent(k, e.target.value); };
+    var fieldCanEdit = canEditItem(fl);
     return html`<${Field} key=${fl.key} label=${fl.label + (fl.required ? ' *' : '')} hint=${fl.hint}>
       ${fl.select
-        ? html`<select value=${v} onChange=${on} disabled=${!canEdit}>
+        ? html`<select value=${v} onChange=${on} disabled=${!fieldCanEdit}>
             <option value=""></option>${fl.select.map(function(o){return html`<option key=${o}>${o}</option>`})}
           </select>`
         : fl.ta
-          ? html`<textarea value=${v} onInput=${on} disabled=${!canEdit} placeholder=${'[' + (fl.hint||'') + ']'}></textarea>`
-          : html`<input type="text" value=${v} onInput=${on} disabled=${!canEdit} placeholder=${'[' + (fl.hint||'') + ']'} />`}
+          ? html`<textarea value=${v} onInput=${on} disabled=${!fieldCanEdit} placeholder=${'[' + (fl.hint||'') + ']'}></textarea>`
+          : html`<input type="text" value=${v} onInput=${on} disabled=${!fieldCanEdit} placeholder=${'[' + (fl.hint||'') + ']'} />`}
+      ${fl.pmOnly && isOwnerKit && html`<p class="small muted" style="margin:4px 0 0">Completed by Digital Team / Program Manager.</p>`}
     <//>`;
   }
 
@@ -1471,9 +1479,9 @@ function LeanDocEditor(p) {
     <div class="card no-print">
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:220px">
-          <div class="small muted" style="margin-bottom:4px">Completeness: ${comp.done}/${comp.total} required items
-            ${' '}<${Badge} color=${readiness ? 'green' : 'amber'}>${readiness ? 'Gate ready' : 'Not gate ready'}<//></div>
-          <${Progress} pct=${comp.pct} />
+          <div class="small muted" style="margin-bottom:4px">${isOwnerKit ? 'Your input' : 'Governance completeness'}: ${actionComp.done}/${actionComp.total} required items
+            ${' '}<${Badge} color=${isOwnerKit ? (actionComp.pct >= 100 ? 'green' : 'amber') : (readiness ? 'green' : 'amber')}>${isOwnerKit ? (actionComp.pct >= 100 ? 'Input complete' : 'Input needed') : (readiness ? 'Gate ready' : 'Not gate ready')}<//></div>
+          <${Progress} pct=${actionComp.pct} />
         </div>
         <${Field} label="Status">
           <select value=${f.status} onChange=${function(e){setCol('status', e.target.value)}} disabled=${!isPMTT}>
@@ -1490,7 +1498,7 @@ function LeanDocEditor(p) {
         ${(sec.fields||[]).map(renderField)}
         ${(sec.tables||[]).map(function(tb) {
           return html`<${TableEditor} key=${tb.key} label=${tb.label} required=${tb.required} cols=${tb.cols}
-            rows=${f.content[tb.key] || []} canEdit=${canEdit}
+            rows=${f.content[tb.key] || []} canEdit=${canEditItem(tb)}
             onChange=${function(rows){ setContent(tb.key, rows); }} />`; })}
         ${sec.approvals && html`<${ApprovalsPanel} idea=${p.idea} doc=${doc} decisions=${p.decisions} />`}
       </div>`; })}
