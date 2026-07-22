@@ -57,7 +57,7 @@ table.data tr:hover td{background:#faf9f6}
 .field{margin-bottom:12px}
 .field label{display:block;font-weight:600;font-size:12.5px;margin-bottom:4px}
 .field .hint{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px}
-.field input[type=text],.field input[type=email],.field input[type=password],.field input[type=date],.field select,.field textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13.5px;font-family:inherit;background:#fff}
+.field input[type=text],.field input[type=email],.field input[type=password],.field input[type=date],.field input[type=number],.field select,.field textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13.5px;font-family:inherit;background:#fff}
 .field textarea{min-height:80px;resize:vertical}
 .checks{display:flex;flex-wrap:wrap;gap:8px}
 .checks label{font-weight:400;font-size:13px;display:flex;align-items:center;gap:5px;background:#efede8;padding:5px 10px;border-radius:7px;cursor:pointer}
@@ -77,6 +77,11 @@ table.data tr:hover td{background:#faf9f6}
 .milestone-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:12px;background:#faf9f6;border-bottom:1px solid var(--border)}
 .activity-row{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:9px;align-items:start;padding:10px 12px;border-top:1px solid var(--border)}
 .activity-row:first-child{border-top:none}
+.plan-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.plan-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.plan-item-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
+.btn.icon-label{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.item-progress{display:flex;align-items:center;gap:7px;margin-top:5px}.item-progress .progress{width:110px;height:6px}
 .status-dot{width:10px;height:10px;border-radius:50%;margin-top:5px;background:var(--amber)}
 .status-dot.done{background:var(--green)}
 .status-dot.late{background:var(--red)}
@@ -165,7 +170,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.6';
+var APP_VERSION = '2026.07.22.7';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -326,15 +331,19 @@ function isProjectClosed(p) {
   return (p.current_stage||'').indexOf('G5') === 0 || (p.current_stage||'').indexOf('S4') === 0;
 }
 function projectWorkSummary(items) {
-  var all = items || [], milestones = all.filter(function(w){ return w.item_type === 'milestone'; });
+  var all = (items || []).filter(function(w){ return w.item_type === 'milestone' || w.item_type === 'activity'; });
+  var milestones = all.filter(function(w){ return w.item_type === 'milestone'; });
   var activities = all.filter(function(w){ return w.item_type === 'activity'; });
   var done = all.filter(isWorkItemDone).length;
+  var progressTotal = all.reduce(function(sum,w){
+    return sum + (w.progress_percent == null ? (isWorkItemDone(w) ? 100 : 0) : Number(w.progress_percent));
+  }, 0);
   var today = new Date();
   var overdue = all.filter(function(w){ return !isWorkItemDone(w) && w.planned_end_date && new Date(w.planned_end_date) < today; });
   var next = milestones.filter(function(w){ return !isWorkItemDone(w) && w.planned_end_date; })
     .sort(function(a,b){ return new Date(a.planned_end_date) - new Date(b.planned_end_date); })[0] || null;
   return { total:all.length, milestones:milestones.length, activities:activities.length,
-    done:done, pct:all.length ? Math.round(done / all.length * 100) : null, overdue:overdue, next:next };
+    done:done, pct:all.length ? Math.round(progressTotal / all.length) : null, overdue:overdue, next:next };
 }
 function latestProjectUpdate(updates) {
   return (updates || []).slice().sort(function(a,b){ return new Date(b.update_week || b.created_at) - new Date(a.update_week || a.created_at); })[0] || null;
@@ -446,8 +455,11 @@ var api = {
   upsertProjects: function(rows){ return sb.from('projects').upsert(rows,{onConflict:'project_id'}).select().then(one); },
   updateProject: function(id,f){ return sb.from('projects').update(f).eq('id',id).select().single().then(one); },
   listProjectWorkItems: function(projectId){
-    return withTimeout(sb.from('project_work_items').select('*').eq('project_id', projectId).order('planned_start_date',{ascending:true,nullsFirst:false}), 5000, {data:[], error:null}).then(function(r){
+    return withTimeout(sb.from('project_work_items').select('*').eq('project_id', projectId).order('sort_order',{ascending:true}).order('planned_start_date',{ascending:true,nullsFirst:false}), 5000, {data:[], error:null}).then(function(r){
       var msg = r.error && (r.error.message || '');
+      if (r.error && msg.indexOf('sort_order') >= 0) {
+        return withTimeout(sb.from('project_work_items').select('*').eq('project_id', projectId).order('planned_start_date',{ascending:true,nullsFirst:false}), 5000, {data:[], error:null}).then(one);
+      }
       if (r.error && (msg.indexOf('project_work_items') >= 0 || msg.indexOf('schema cache') >= 0 || msg.indexOf('does not exist') >= 0)) return [];
       return one(r);
     });
@@ -463,6 +475,8 @@ var api = {
     if (!rows || !rows.length) return Promise.resolve([]);
     return sb.from('project_work_items').upsert(rows,{onConflict:'project_id,smartsheet_id'}).select().then(one);
   },
+  createProjectWorkItem: function(f){ return sb.from('project_work_items').insert(f).select().single().then(one); },
+  updateProjectWorkItem: function(id,f){ return sb.from('project_work_items').update(f).eq('id',id).select().single().then(one); },
   listProjectUpdates: function(projectRef){
     return withTimeout(sb.from('project_updates').select('*, author:author_id(name,email)').eq('project_ref', projectRef).order('update_week',{ascending:false}), 5000, {data:[], error:null}).then(function(r){
       var msg = r.error && (r.error.message || '');
@@ -492,6 +506,7 @@ var api = {
   existingProjectIds: function(){ return sb.from('projects').select('project_id').then(one).then(function(rows){ return new Set(rows.map(function(r){return r.project_id})); }); },
   listActivity: function(t,id){ return sb.from('activity').select('*, user:user_id(name)').eq('related_type',t).eq('related_id',id).order('created_at',{ascending:false}).then(one); },
   addComment: function(t,id,uid,msg){ return sb.from('activity').insert({related_type:t,related_id:id,user_id:uid,kind:'comment',message:msg}).select().then(one); },
+  addActivity: function(t,id,uid,kind,msg){ return sb.from('activity').insert({related_type:t,related_id:id,user_id:uid,kind:kind||'event',message:msg}).select().then(one); },
   listNotifications: function(){ return api.getSession().then(function(s){
     return sb.from('notifications').select('*').eq('recipient_id',s.user.id).order('created_at',{ascending:false}).limit(100).then(one); }); },
   markNotificationRead: function(id){ return sb.from('notifications').update({read:true}).eq('id',id).select().then(one); },
@@ -503,14 +518,22 @@ var api = {
 var SMARTSHEET_COLUMNS = ['Id','Needs attention','Project Category','Project Name','Current Stage','Digital Pillar','Key Benefiting Functions','Project Execution phase','Pillar Sponsor','Project Description','Project Lead','PWR-T IT lead','Integrator/Consultants','Charter Status','Charter file','IT Demand Status','AR Status','AR file','CAPEX k€','Current Y Budget','Cost Center/Internal Order','Planned Start Date','Planned End Date','Linked Initiatives #'];
 var FIELD_MAP = {'Id':'project_id','Needs attention':'needs_attention','Project Category':'project_category','Project Name':'project_name','Current Stage':'current_stage','Digital Pillar':'digital_pillar','Key Benefiting Functions':'key_benefiting_functions','Project Execution phase':'execution_phase','Pillar Sponsor':'pillar_sponsor','Project Description':'project_description','Project Lead':'project_lead','PWR-T IT lead':'pwt_it_lead','Integrator/Consultants':'integrator_consultants','Charter Status':'charter_status','Charter file':'charter_file','IT Demand Status':'it_demand_status','AR Status':'ar_status','AR file':'ar_file','CAPEX k€':'capex_keur','Current Y Budget':'current_year_budget','Cost Center/Internal Order':'cost_center_internal_order','Planned Start Date':'planned_start_date','Planned End Date':'planned_end_date','Linked Initiatives #':'linked_initiative_id'};
 var HIERARCHY_COLUMNS = ['Category','Assigned to (Nexans email)','Initiative, Milestone, Activity Name','Initiative ID','Parent Initiative ID','Parent Milestone ID','PSR ID','Type','Description','Accountability','Workstream','Sub-Workstream','Stage','Status','Planned start date','Planned end date','Deliverable to complete (description)','Capex required?','Current Stage','Digital Pillar','Quick win?','Priority?','Stakeholder'];
+var HIERARCHY_OPTIONAL_COLUMNS = ['% Complete','Progress','Smartsheet Row ID','Row ID'];
 function ssToDate(v) {
   if (v == null || v === '') return null;
-  if (v instanceof Date) return v.toISOString().slice(0,10);
+  function localDate(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  if (v instanceof Date) return localDate(v);
   if (typeof v === 'number') { var d = XLSX.SSF.parse_date_code(v); if (!d) return null;
     return d.y + '-' + String(d.m).padStart(2,'0') + '-' + String(d.d).padStart(2,'0'); }
-  var d2 = new Date(v); return isNaN(d2) ? null : d2.toISOString().slice(0,10);
+  var d2 = new Date(v); return isNaN(d2) ? null : localDate(d2);
 }
 function ssToNum(v) { if (v == null || v === '') return null; var n = Number(String(v).replace(',','.')); return isNaN(n) ? null : n; }
+function ssToProgress(v) {
+  var n = ssToNum(v);
+  if (n == null) return null;
+  if (n >= 0 && n <= 1) n = n * 100;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
 function ssToBool(v) {
   if (v == null || v === '') return false;
   var s = String(v).trim().toLowerCase();
@@ -563,7 +586,7 @@ function parseHierarchyProjectRows(raw) {
     var category = String(cleanText(r['Category']) || '').toLowerCase();
     var projectId = category === 'initiative' ? cleanText(r['Initiative ID']) : cleanText(r['Parent Initiative ID']);
     return cleanText(r['Initiative ID']) && projectIds[projectId];
-  }).map(function(r){
+  }).map(function(r, order){
     var cat = String(cleanText(r['Category']) || '').toLowerCase();
     var itemType = cat === 'milestone' ? 'milestone' : cat === 'activity' ? 'activity' : 'initiative';
     var sid = cleanText(r['Initiative ID']);
@@ -573,6 +596,7 @@ function parseHierarchyProjectRows(raw) {
       parent_initiative_id: cleanText(r['Parent Initiative ID']),
       parent_milestone_id: cleanText(r['Parent Milestone ID']),
       item_type: itemType,
+      sort_order: order,
       name: cleanText(r['Initiative, Milestone, Activity Name']) || sid,
       description: cleanText(r['Description']),
       owner_email: cleanText(r['Assigned to (Nexans email)']),
@@ -581,6 +605,7 @@ function parseHierarchyProjectRows(raw) {
       sub_workstream: cleanText(r['Sub-Workstream']),
       stage: cleanText(r['Stage']),
       status: cleanText(r['Status']),
+      progress_percent: ssToProgress(r['% Complete'] != null ? r['% Complete'] : r['Progress']),
       current_stage: cleanText(r['Current Stage']),
       planned_start_date: ssToDate(r['Planned start date']),
       planned_end_date: ssToDate(r['Planned end date']),
@@ -589,14 +614,18 @@ function parseHierarchyProjectRows(raw) {
       digital_pillar: cleanText(r['Digital Pillar']),
       quick_win: ssToBool(r['Quick win?']),
       priority: ssToBool(r['Priority?']),
-      stakeholder: cleanText(r['Stakeholder'])
+      stakeholder: cleanText(r['Stakeholder']),
+      source_origin: 'smartsheet',
+      sync_status: 'synced',
+      smartsheet_row_id: cleanText(r['Smartsheet Row ID']) || cleanText(r['Row ID'])
     };
   });
   return { projects: projects, workItems: workItems };
 }
 function parseSmartsheetFile(file) {
   return file.arrayBuffer().then(function(buf){
-    var wb = XLSX.read(buf, {cellDates:true});
+    // Keep Excel dates as serials so parsing is independent of browser timezone.
+    var wb = XLSX.read(buf, {cellDates:false});
     var sheet = null, mode = 'flat';
     for (var k = 0; k < wb.SheetNames.length; k++) {
       var head = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[k]], {header:1, range:0})[0] || [];
@@ -608,7 +637,7 @@ function parseSmartsheetFile(file) {
     var warnings = [];
     var headers = Object.keys(raw[0] || {});
     var expected = mode === 'hierarchy' ? HIERARCHY_COLUMNS : SMARTSHEET_COLUMNS;
-    headers.forEach(function(hd){ if (expected.indexOf(hd) < 0) warnings.push('Unknown column ignored: "' + hd + '"'); });
+    headers.forEach(function(hd){ if (expected.indexOf(hd) < 0 && HIERARCHY_OPTIONAL_COLUMNS.indexOf(hd) < 0) warnings.push('Unknown column ignored: "' + hd + '"'); });
     expected.forEach(function(c){ if (headers.indexOf(c) < 0) warnings.push('Missing column: "' + c + '"'); });
     var parsed = mode === 'hierarchy' ? parseHierarchyProjectRows(raw) : parseFlatProjectRows(raw);
     var rows = parsed.projects, workItems = parsed.workItems;
@@ -617,6 +646,49 @@ function parseSmartsheetFile(file) {
     workItems.forEach(function(w){ if (!seen.has(w.project_id)) warnings.push('Work item ignored by database unless parent initiative is imported first: ' + w.smartsheet_id); });
     return { rows: rows, workItems: workItems, warnings: warnings, mode: mode };
   });
+}
+function exportProjectPlanToSmartsheet(project, items) {
+  var ordered = (items || []).slice().sort(function(a,b){ return (a.sort_order || 0) - (b.sort_order || 0); });
+  if (!ordered.some(function(w){ return w.item_type === 'initiative'; })) {
+    ordered.unshift({
+      item_type:'initiative', project_id:project.project_id, smartsheet_id:project.project_id,
+      name:project.project_name, description:project.project_description, owner_email:project.project_lead,
+      stage:project.execution_phase, current_stage:project.current_stage, digital_pillar:project.digital_pillar,
+      planned_start_date:project.planned_start_date, planned_end_date:project.planned_end_date, sort_order:-1
+    });
+  }
+  var rows = ordered.map(function(w){
+    return {
+      'Category': w.item_type.charAt(0).toUpperCase() + w.item_type.slice(1),
+      'Assigned to (Nexans email)': w.owner_email || '',
+      'Initiative, Milestone, Activity Name': w.name || '',
+      'Initiative ID': w.smartsheet_id || '',
+      'Parent Initiative ID': w.item_type === 'initiative' ? '' : w.project_id,
+      'Parent Milestone ID': w.parent_milestone_id || '',
+      'PSR ID': w.item_type === 'initiative' ? (project.linked_initiative_id || '') : '',
+      'Type': w.item_type === 'initiative' ? (project.project_category || 'Initiative') : '',
+      'Description': w.description || '',
+      'Accountability': w.accountability || '',
+      'Workstream': w.workstream || '',
+      'Sub-Workstream': w.sub_workstream || '',
+      'Stage': w.stage || '',
+      'Status': w.status || '',
+      '% Complete': w.progress_percent == null ? '' : w.progress_percent,
+      'Planned start date': w.planned_start_date || '',
+      'Planned end date': w.planned_end_date || '',
+      'Deliverable to complete (description)': w.deliverable || '',
+      'Capex required?': w.capex_required || '',
+      'Current Stage': w.current_stage || '',
+      'Digital Pillar': w.digital_pillar || '',
+      'Quick win?': w.quick_win ? 'Yes' : '',
+      'Priority?': w.priority ? 'Yes' : '',
+      'Stakeholder': w.stakeholder || '',
+      'Smartsheet Row ID': w.smartsheet_row_id || ''
+    };
+  });
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Delivery Plan');
+  XLSX.writeFile(wb, (project.project_id || 'project') + '_delivery_plan.xlsx');
 }
 function exportInitiativesToSmartsheet(items, filename) {
   var data = items.map(function(it){
@@ -662,6 +734,9 @@ function userErrorMessage(e) {
   var low = msg.toLowerCase();
   if (low.indexOf('status_reason') >= 0 || low.indexOf('has no field') >= 0) {
     return 'This action could not be completed because your browser is running an older version of Digital Pulse. Please refresh with Ctrl+F5, then try again. If it still appears, contact the Digital Transformation team.';
+  }
+  if (low.indexOf('sort_order') >= 0 || low.indexOf('progress_percent') >= 0 || low.indexOf('sync_status') >= 0 || low.indexOf('last_modified_by') >= 0) {
+    return 'The editable delivery plan database update is not applied yet. Ask a Program Manager/Admin to run migration 10 in Supabase SQL Editor, then refresh the app.';
   }
   if (low.indexOf('project_work_items') >= 0 || low.indexOf('project_updates') >= 0) {
     return 'The Project Delivery Workspace database update has not been applied yet. Ask a Program Manager/Admin to run migration 9 in Supabase SQL Editor, then refresh the app.';
@@ -725,6 +800,8 @@ function NavIcon(p) {
   if (p.name === 'projects') return html`<svg ...${common}><path d="M3 7h7l2 2h9v10H3z"></path><path d="M3 7v12"></path></svg>`;
   if (p.name === 'sync') return html`<svg ...${common}><path d="M20 11a8 8 0 0 0-14.2-4.8L4 8"></path><path d="M4 4v4h4"></path><path d="M4 13a8 8 0 0 0 14.2 4.8L20 16"></path><path d="M20 20v-4h-4"></path></svg>`;
   if (p.name === 'bell') return html`<svg ...${common}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg>`;
+  if (p.name === 'edit') return html`<svg ...${common}><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"></path></svg>`;
+  if (p.name === 'download') return html`<svg ...${common}><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>`;
   return html`<svg ...${common}><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3"></path><path d="M12 19v3"></path><path d="M4.9 4.9 7 7"></path><path d="m17 17 2.1 2.1"></path><path d="M2 12h3"></path><path d="M19 12h3"></path><path d="m4.9 19.1 2.1-2.1"></path><path d="m17 7 2.1-2.1"></path></svg>`;
 }
 function useAsync(fn, deps) {
@@ -1868,22 +1945,40 @@ function DecisionModal(p) {
 
 function ProjectTimeline(p) {
   var items = p.items || [];
-  var milestones = items.filter(function(w){ return w.item_type === 'milestone'; });
-  var activities = items.filter(function(w){ return w.item_type === 'activity'; });
+  var ordered = items.slice().sort(function(a,b){ return (a.sort_order || 0) - (b.sort_order || 0); });
+  var milestones = ordered.filter(function(w){ return w.item_type === 'milestone'; });
+  var activities = ordered.filter(function(w){ return w.item_type === 'activity'; });
   var byMilestone = {};
   activities.forEach(function(a){ var k = a.parent_milestone_id || '_none'; (byMilestone[k] = byMilestone[k] || []).push(a); });
   function dot(w) {
     var late = !isWorkItemDone(w) && w.planned_end_date && new Date(w.planned_end_date) < new Date();
     return 'status-dot ' + (isWorkItemDone(w) ? 'done' : late ? 'late' : '');
   }
+  function progress(w) {
+    if (w.progress_percent == null) return null;
+    return html`<div class="item-progress"><${Progress} pct=${w.progress_percent} /><span class="small muted">${w.progress_percent}%</span></div>`;
+  }
+  function sync(w) {
+    if (w.sync_status === 'conflict') return html`<${Badge} color="red">Conflict<//>`;
+    if (w.sync_status === 'pending_push') return html`<${Badge} color="amber">Pending SmartSheet<//>`;
+    return null;
+  }
+  function actions(type, parentId) {
+    if (!p.canEdit) return null;
+    return html`<div class="plan-actions no-print">
+      <button class="btn secondary small icon-label" onClick=${function(){p.onAdd(type, parentId || null)}}><${NavIcon} name="plus" /> ${type === 'milestone' ? 'Milestone' : 'Activity'}</button>
+    </div>`;
+  }
   if (!items.length) return html`<div class="card">
-    <h2>Delivery plan</h2>
+    <div class="plan-toolbar"><h2 class="mb0">Delivery plan</h2><div class="plan-actions">${actions('milestone')}${actions('activity')}</div></div>
     <p class="muted small">No milestones or activities imported yet. Import a hierarchy SmartSheet file to activate the Project Manager workspace.</p>
     <${A} href="/import-export" class="btn secondary no-print">Open SmartSheet Import<//>
   </div>`;
   return html`<div class="card">
-    <h2>Delivery plan</h2>
-    <div class="small muted" style="margin-bottom:10px">${milestones.length} milestone(s) · ${activities.length} activity item(s)</div>
+    <div class="plan-toolbar">
+      <div><h2 class="mb0">Delivery plan</h2><div class="small muted">${milestones.length} milestone(s) · ${activities.length} activity item(s)</div></div>
+      <div class="plan-actions">${actions('milestone')}${actions('activity')}</div>
+    </div>
     <div class="timeline">
       ${milestones.map(function(m){
         var acts = byMilestone[m.smartsheet_id] || [];
@@ -1892,9 +1987,13 @@ function ProjectTimeline(p) {
             <div>
               <b>${m.name}</b>
               <div class="small muted">${fmtDate(m.planned_start_date)} → ${fmtDate(m.planned_end_date)} · ${m.status || 'Status ?'}</div>
+              ${progress(m)}
               ${m.deliverable && html`<div class="small" style="margin-top:4px">${m.deliverable}</div>`}
             </div>
-            <div>${healthBadge(isWorkItemDone(m) ? 'Green' : (m.planned_end_date && new Date(m.planned_end_date) < new Date()) ? 'Red' : 'Amber')}</div>
+            <div class="plan-item-actions">${sync(m)}${healthBadge(isWorkItemDone(m) ? 'Green' : (m.planned_end_date && new Date(m.planned_end_date) < new Date()) ? 'Red' : 'Amber')}
+              ${p.canEdit && html`<button class="btn secondary small icon-label no-print" onClick=${function(){p.onEdit(m)}} title="Edit milestone"><${NavIcon} name="edit" /> Edit</button>`}
+              ${actions('activity', m.smartsheet_id)}
+            </div>
           </div>
           <div>
             ${acts.map(function(a){ return html`<div class="activity-row" key=${a.id || a.smartsheet_id}>
@@ -1902,9 +2001,12 @@ function ProjectTimeline(p) {
               <div>
                 <b class="small">${a.name}</b>
                 <div class="small muted">${a.owner_email || 'No owner'} · ${fmtDate(a.planned_start_date)} → ${fmtDate(a.planned_end_date)} · ${a.status || 'Status ?'}</div>
+                ${progress(a)}
                 ${a.deliverable && html`<div class="small">${a.deliverable}</div>`}
               </div>
-              <${Badge} color=${isWorkItemDone(a) ? 'green' : (a.planned_end_date && new Date(a.planned_end_date) < new Date()) ? 'red' : 'gray'}>${isWorkItemDone(a) ? 'Done' : 'Open'}<//>
+              <div class="plan-item-actions">${sync(a)}<${Badge} color=${isWorkItemDone(a) ? 'green' : (a.planned_end_date && new Date(a.planned_end_date) < new Date()) ? 'red' : 'gray'}>${isWorkItemDone(a) ? 'Done' : 'Open'}<//>
+                ${p.canEdit && html`<button class="btn secondary small icon-label no-print" onClick=${function(){p.onEdit(a)}} title="Edit activity"><${NavIcon} name="edit" /> Edit</button>`}
+              </div>
             </div>`; })}
             ${!acts.length && html`<div class="activity-row"><span class="status-dot"></span><div class="small muted">No activities attached to this milestone.</div></div>`}
           </div>
@@ -1913,7 +2015,8 @@ function ProjectTimeline(p) {
       ${(byMilestone._none || []).length > 0 && html`<div class="milestone">
         <div class="milestone-head"><b>Activities without milestone</b><span class="small muted">${byMilestone._none.length}</span></div>
         ${(byMilestone._none || []).map(function(a){ return html`<div class="activity-row" key=${a.id || a.smartsheet_id}>
-          <span class=${dot(a)}></span><div><b class="small">${a.name}</b><div class="small muted">${fmtDate(a.planned_end_date)} · ${a.status || 'Status ?'}</div></div>
+          <span class=${dot(a)}></span><div><b class="small">${a.name}</b><div class="small muted">${fmtDate(a.planned_end_date)} · ${a.status || 'Status ?'}</div>${progress(a)}</div>
+          ${p.canEdit && html`<button class="btn secondary small icon-label no-print" onClick=${function(){p.onEdit(a)}}><${NavIcon} name="edit" /> Edit</button>`}
         </div>`; })}
       </div>`}
     </div>
@@ -1955,6 +2058,76 @@ function ProjectUpdatePanel(p) {
   </div>`;
 }
 
+var DELIVERY_ITEM_STATUSES = ['Not Started','In Progress','Blocked','On Hold','Completed'];
+function WorkItemModal(p) {
+  var base = p.item || {};
+  var st = useState({
+    item_type: base.item_type || 'milestone',
+    name: base.name || '',
+    parent_milestone_id: base.parent_milestone_id || '',
+    status: base.status || 'Not Started',
+    progress_percent: base.progress_percent == null ? 0 : base.progress_percent,
+    owner_email: base.owner_email || '',
+    planned_start_date: base.planned_start_date || '',
+    planned_end_date: base.planned_end_date || '',
+    workstream: base.workstream || '',
+    stage: base.stage || '',
+    current_stage: base.current_stage || '',
+    accountability: base.accountability || '',
+    stakeholder: base.stakeholder || '',
+    deliverable: base.deliverable || '',
+    description: base.description || '',
+    sort_order: base.sort_order == null ? p.nextOrder : base.sort_order
+  });
+  var f = st[0], bz = useState(false), er = useState(null);
+  function set(k,v){ st[1](function(s){ var n=Object.assign({},s); n[k]=v; return n; }); }
+  function save() {
+    if (!f.name.trim()) { er[1]('Name is required.'); return; }
+    if (f.item_type === 'activity' && !f.parent_milestone_id) { er[1]('Select a parent milestone for this activity.'); return; }
+    bz[1](true); er[1](null);
+    var payload = Object.assign({}, f, {
+      name:f.name.trim(), parent_milestone_id:f.item_type === 'activity' ? f.parent_milestone_id : null,
+      progress_percent:Math.max(0,Math.min(100,Number(f.progress_percent)||0)),
+      sort_order:Number(f.sort_order)||0,
+      owner_email:f.owner_email.trim()||null, workstream:f.workstream.trim()||null,
+      stage:f.stage.trim()||null, current_stage:f.current_stage.trim()||null,
+      accountability:f.accountability.trim()||null, stakeholder:f.stakeholder.trim()||null,
+      deliverable:f.deliverable.trim()||null, description:f.description.trim()||null,
+      planned_start_date:f.planned_start_date||null, planned_end_date:f.planned_end_date||null
+    });
+    p.onSave(payload).then(p.onClose).catch(function(e){ er[1](userErrorMessage(e)); bz[1](false); });
+  }
+  var statusOptions = DELIVERY_ITEM_STATUSES.slice();
+  if (f.status && statusOptions.indexOf(f.status) < 0) statusOptions.unshift(f.status);
+  return html`<${Modal} title=${base.id ? 'Edit delivery item' : 'Add delivery item'} onClose=${p.onClose}>
+    <div class="grid cols-2">
+      <${Field} label="Type"><select value=${f.item_type} onChange=${function(e){set('item_type',e.target.value)}}>
+        <option value="milestone">Milestone</option><option value="activity">Activity</option>
+      </select><//>
+      <${Field} label="File order"><input type="number" min="0" value=${f.sort_order} onInput=${function(e){set('sort_order',e.target.value)}} /><//>
+    </div>
+    <${Field} label="Name *"><input type="text" value=${f.name} onInput=${function(e){set('name',e.target.value)}} /><//>
+    ${f.item_type === 'activity' && html`<${Field} label="Parent milestone *"><select value=${f.parent_milestone_id} onChange=${function(e){set('parent_milestone_id',e.target.value)}}>
+      <option value="">Select milestone</option>${p.milestones.map(function(m){return html`<option key=${m.smartsheet_id} value=${m.smartsheet_id}>${m.name}</option>`})}
+    </select><//>`}
+    <div class="grid cols-2">
+      <${Field} label="Status"><select value=${f.status} onChange=${function(e){set('status',e.target.value)}}>${statusOptions.map(function(s){return html`<option key=${s}>${s}</option>`})}</select><//>
+      <${Field} label="Progress (%)"><input type="number" min="0" max="100" value=${f.progress_percent} onInput=${function(e){set('progress_percent',e.target.value)}} /><//>
+      <${Field} label="Owner email"><input type="email" value=${f.owner_email} onInput=${function(e){set('owner_email',e.target.value)}} /><//>
+      <${Field} label="Workstream"><input type="text" value=${f.workstream} onInput=${function(e){set('workstream',e.target.value)}} /><//>
+      <${Field} label="Planned start"><input type="date" value=${f.planned_start_date} onInput=${function(e){set('planned_start_date',e.target.value)}} /><//>
+      <${Field} label="Planned end"><input type="date" value=${f.planned_end_date} onInput=${function(e){set('planned_end_date',e.target.value)}} /><//>
+      <${Field} label="Stage"><input type="text" value=${f.stage} onInput=${function(e){set('stage',e.target.value)}} /><//>
+      <${Field} label="Current gate / phase"><input type="text" value=${f.current_stage} onInput=${function(e){set('current_stage',e.target.value)}} /><//>
+      <${Field} label="Accountability"><input type="text" value=${f.accountability} onInput=${function(e){set('accountability',e.target.value)}} /><//>
+      <${Field} label="Stakeholder"><input type="text" value=${f.stakeholder} onInput=${function(e){set('stakeholder',e.target.value)}} /><//>
+    </div>
+    <${Field} label="Deliverable"><textarea value=${f.deliverable} onInput=${function(e){set('deliverable',e.target.value)}}></textarea><//>
+    <${Field} label="Description"><textarea value=${f.description} onInput=${function(e){set('description',e.target.value)}}></textarea><//>
+    ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
+    <button class="btn" onClick=${save} disabled=${bz[0]}>${bz[0] ? 'Saving…' : 'Save'}</button><//>`;
+}
+
 /* ================= Project detail page (delivery workspace + comments) ================= */
 function ProjectDetailPage(p) {
   var project = useAsync(function(){ return api.getProject(p.id, p.auth.session && p.auth.session.access_token); }, [p.id, p.auth.session && p.auth.session.access_token]);
@@ -1971,6 +2144,7 @@ function ProjectDetailPage(p) {
     return project.data ? api.listProjectUpdates(project.data.id) : Promise.resolve([]);
   }, [p.id, project.data && project.data.id]);
   var uf = useState({ health_status:'Green', progress_summary:'', blockers:'', next_actions:'', support_needed:'' });
+  var wi = useState(null);
   if (project.loading) return html`<div class="card" style="max-width:620px">
     <h2>Loading project workspace…</h2>
     <p class="muted small">Project ID: ${p.id}</p>
@@ -1998,6 +2172,7 @@ function ProjectDetailPage(p) {
   var naVal = na[0] === null ? (pr.needs_attention || '') : na[0];
   var delivery = projectDeliveryHealth(pr, workItems.data || [], updates.data || [], !!prCharter);
   var canUpdate = isPMTT || p.auth.profile.role === 'project_lead';
+  var nextWorkOrder = (workItems.data || []).reduce(function(max,w){ return Math.max(max, Number(w.sort_order)||0); }, 0) + 10;
 
   function setU(key, value) {
     uf[1](function(current){
@@ -2027,6 +2202,25 @@ function ProjectDetailPage(p) {
     }).finally(function(){
       bz[1](false);
     });
+  }
+  function openNewWorkItem(type, parentMilestoneId) {
+    wi[1]({ item_type:type, parent_milestone_id:parentMilestoneId || '', sort_order:nextWorkOrder });
+  }
+  function saveWorkItem(payload) {
+    var editing = wi[0] && wi[0].id;
+    var fields = Object.assign({}, payload, {
+      project_id:pr.project_id,
+      parent_initiative_id:pr.project_id,
+      source_origin:'digital_pulse',
+      sync_status:'pending_push',
+      last_modified_by:p.auth.profile.id
+    });
+    if (!editing) fields.smartsheet_id = 'DP-' + payload.item_type.slice(0,1).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
+    var action = editing ? api.updateProjectWorkItem(wi[0].id, fields) : api.createProjectWorkItem(fields);
+    return action.then(function(saved){
+      var verb = editing ? 'updated' : 'added';
+      return api.addActivity('Project', pr.id, p.auth.profile.id, 'event', 'Delivery item ' + verb + ': ' + saved.name).catch(function(){ return null; }).then(function(){ return saved; });
+    }).then(function(saved){ workItems.reload(); activity.reload(); return saved; });
   }
   function postComment() {
     if (!cm[0].trim()) return;
@@ -2058,7 +2252,10 @@ function ProjectDetailPage(p) {
           ${alerts.length > 0 && html`<${Badge} color="red">${alerts.length} alert(s)<//>`}
         </div>
       </div>
-      <button class="btn secondary no-print" onClick=${function(){window.print()}}>🖨 Print</button>
+      <div class="plan-actions no-print">
+        <button class="btn secondary icon-label" onClick=${function(){exportProjectPlanToSmartsheet(pr, workItems.data || [])}}><${NavIcon} name="download" /> Export plan</button>
+        <button class="btn secondary" onClick=${function(){window.print()}}>Print</button>
+      </div>
     </div>
     <p class="muted small">SmartSheet is the source planning baseline. Digital Pulse is the delivery workspace for updates, alerts, decisions and governance follow-up.</p>
     <div class="delivery-strip">
@@ -2095,7 +2292,11 @@ function ProjectDetailPage(p) {
             <${Badge} color=${a.type === 'budget' ? 'red' : a.type === 'planning' ? 'amber' : 'gray'}>${a.type}<//>
             <span>${a.msg}</span></div>`; })}
         </div>`}
-        <${ProjectTimeline} items=${workItems.data || []} />
+        ${workItems.error && html`<div class="card" style="border-left:4px solid var(--red);color:var(--red)">${userErrorMessage(workItems.error)}</div>`}
+        <${ProjectTimeline} items=${workItems.data || []} canEdit=${canUpdate} onEdit=${function(item){wi[1](item)}} onAdd=${openNewWorkItem} />
+        ${wi[0] && html`<${WorkItemModal} key=${wi[0].id || wi[0].item_type + '-' + wi[0].sort_order} item=${wi[0]}
+          milestones=${(workItems.data || []).filter(function(w){return w.item_type === 'milestone'})} nextOrder=${nextWorkOrder}
+          onClose=${function(){wi[1](null)}} onSave=${saveWorkItem} />`}
         <div class="card">
           <h2>Project data</h2>
           <table class="data"><tbody>

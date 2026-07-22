@@ -225,6 +225,7 @@ create table public.project_work_items (
   parent_initiative_id text,
   parent_milestone_id text,
   item_type text not null check (item_type in ('initiative','milestone','activity')),
+  sort_order integer not null default 0,
   name text not null,
   description text,
   owner_email text,
@@ -233,6 +234,7 @@ create table public.project_work_items (
   sub_workstream text,
   stage text,
   status text,
+  progress_percent integer check (progress_percent between 0 and 100),
   current_stage text,
   planned_start_date date,
   planned_end_date date,
@@ -243,6 +245,10 @@ create table public.project_work_items (
   priority boolean,
   stakeholder text,
   source_file text,
+  source_origin text not null default 'smartsheet' check (source_origin in ('smartsheet','digital_pulse')),
+  sync_status text not null default 'synced' check (sync_status in ('synced','pending_push','pending_review','conflict')),
+  smartsheet_row_id text,
+  last_modified_by uuid references public.profiles(id),
   imported_at timestamptz,
   updated_at timestamptz not null default now(),
   unique(project_id, smartsheet_id)
@@ -484,11 +490,23 @@ create policy prj_lead_select on public.projects for select to authenticated
     )
   );
 
--- Project work items / updates: PM + TT full; project leads read assigned delivery plan and submit updates
+-- Project work items / updates: PM + TT full; project leads manage assigned delivery plans and submit updates
 create policy pwi_all_pm_tt on public.project_work_items for all to authenticated
   using (public.is_pm_or_tt()) with check (public.is_pm_or_tt());
-create policy pwi_lead_select on public.project_work_items for select to authenticated
+create policy pwi_lead_manage on public.project_work_items for all to authenticated
   using (
+    public.my_role() = 'project_lead'
+    and exists (
+      select 1 from public.projects p
+      where p.project_id = project_work_items.project_id
+        and (
+          p.project_manager_id = auth.uid()
+          or p.project_lead = (select name from public.profiles where id = auth.uid())
+          or p.project_lead = (select email from public.profiles where id = auth.uid())
+        )
+    )
+  )
+  with check (
     public.my_role() = 'project_lead'
     and exists (
       select 1 from public.projects p
