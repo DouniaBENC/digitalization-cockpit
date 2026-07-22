@@ -418,6 +418,18 @@ var api = {
       return one(r);
     });
   },
+  getProject: function(id){
+    return withTimeout(sb.from('projects').select('*, manager:project_manager_id(name,email)').eq('id', id).maybeSingle(), 6000, {error:{message:'project_manager_id timeout'}}).then(function(r){
+      var msg = r.error && (r.error.message || '');
+      if (r.error && (msg.indexOf('project_manager_id') >= 0 || msg.indexOf('relationship') >= 0 || msg.indexOf('schema cache') >= 0)) {
+        return withTimeout(sb.from('projects').select('*').eq('id', id).maybeSingle(), 6000, {data:null, error:null}).then(one).then(function(row){
+          if (row) row.manager = null;
+          return row;
+        });
+      }
+      return one(r);
+    });
+  },
   upsertProjects: function(rows){ return sb.from('projects').upsert(rows,{onConflict:'project_id'}).select().then(one); },
   updateProject: function(id,f){ return sb.from('projects').update(f).eq('id',id).select().single().then(one); },
   listProjectWorkItems: function(projectId){
@@ -1915,7 +1927,7 @@ function ProjectUpdatePanel(p) {
 
 /* ================= Project detail page (delivery workspace + comments) ================= */
 function ProjectDetailPage(p) {
-  var projects = useAsync(api.listProjects, [p.id]);
+  var project = useAsync(function(){ return api.getProject(p.id); }, [p.id]);
   var ideas = useAsync(api.listIdeas, [p.id]);
   var decisions = useAsync(api.listDecisions, [p.id]);
   var activity = useAsync(function(){ return api.listActivity('Project', p.id); }, [p.id]);
@@ -1923,16 +1935,15 @@ function ProjectDetailPage(p) {
   var chartersL = useAsync(api.listChartersLight, [p.id]);
   var bcsL = useAsync(function(){ return sb.from('business_cases').select('id, idea_id, business_case_id, version, status, content, recommendation').then(one); }, [p.id]);
   var workItems = useAsync(function(){
-    var found = (projects.data || []).find(function(x){ return x.id === p.id; });
-    return found ? api.listProjectWorkItems(found.project_id) : Promise.resolve([]);
-  }, [p.id, projects.data && projects.data.length]);
+    return project.data ? api.listProjectWorkItems(project.data.project_id) : Promise.resolve([]);
+  }, [p.id, project.data && project.data.project_id]);
   var updates = useAsync(function(){
-    var found = (projects.data || []).find(function(x){ return x.id === p.id; });
-    return found ? api.listProjectUpdates(found.id) : Promise.resolve([]);
-  }, [p.id, projects.data && projects.data.length]);
+    return project.data ? api.listProjectUpdates(project.data.id) : Promise.resolve([]);
+  }, [p.id, project.data && project.data.id]);
   var uf = useState({ health_status:'Green', progress_summary:'', blockers:'', next_actions:'', support_needed:'' });
-  if (projects.loading) return html`<p>Loading…</p>`;
-  var pr = (projects.data || []).find(function(x){ return x.id === p.id; });
+  if (project.loading) return html`<p>Loading…</p>`;
+  if (project.error) return html`<p style="color:var(--red)">${userErrorMessage(project.error)}</p>`;
+  var pr = project.data;
   if (!pr) return html`<p class="muted">Project not found. <${A} href="/projects">← Back to projects<//></p>`;
   var linkedIdea = (ideas.data || []).find(function(i){ return i.idea_id === pr.linked_initiative_id || i.linked_project_id === pr.project_id; });
   var prCharter = (chartersL.data || []).find(function(x){ return x.smartsheet_project_id === pr.project_id; })
@@ -1952,7 +1963,7 @@ function ProjectDetailPage(p) {
   function saveNA() {
     bz[1](true); er[1](null);
     api.updateProject(pr.id, { needs_attention: naVal || null })
-      .then(function(){ projects.reload(); })
+      .then(function(){ project.reload(); })
       .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
   }
   function row(k, v) { return html`<tr key=${k}><td class="muted small" style="width:170px">${k}</td><td>${v != null && v !== '' ? v : '—'}</td></tr>`; }
