@@ -1951,7 +1951,12 @@ function ProjectDetailPage(p) {
     return project.data ? api.listProjectUpdates(project.data.id) : Promise.resolve([]);
   }, [p.id, project.data && project.data.id]);
   var uf = useState({ health_status:'Green', progress_summary:'', blockers:'', next_actions:'', support_needed:'' });
-  if (project.loading) return html`<p>Loading…</p>`;
+  if (project.loading) return html`<div class="card" style="max-width:620px">
+    <h2>Loading project workspace…</h2>
+    <p class="muted small">Project ID: ${p.id}</p>
+    <p class="muted small">App version: v${APP_VERSION}. If this stays visible for more than 12 seconds, hard-refresh the browser tab.</p>
+    <button class="btn secondary" onClick=${function(){ location.reload(); }}>Reload</button>
+  </div>`;
   if (project.error) return html`<p style="color:var(--red)">${userErrorMessage(project.error)}</p>`;
   var pr = project.data;
   if (!pr) return html`<p class="muted">Project not found. <${A} href="/projects">← Back to projects<//></p>`;
