@@ -165,7 +165,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.5';
+var APP_VERSION = '2026.07.22.6';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -559,13 +559,16 @@ function parseHierarchyProjectRows(raw) {
   });
   var projectIds = {};
   projects.forEach(function(p){ projectIds[p.project_id] = true; });
-  var workItems = raw.filter(function(r){ return cleanText(r['Initiative ID']) && projectIds[cleanText(r['Initiative ID'])]; }).map(function(r){
+  var workItems = raw.filter(function(r){
+    var category = String(cleanText(r['Category']) || '').toLowerCase();
+    var projectId = category === 'initiative' ? cleanText(r['Initiative ID']) : cleanText(r['Parent Initiative ID']);
+    return cleanText(r['Initiative ID']) && projectIds[projectId];
+  }).map(function(r){
     var cat = String(cleanText(r['Category']) || '').toLowerCase();
     var itemType = cat === 'milestone' ? 'milestone' : cat === 'activity' ? 'activity' : 'initiative';
-    var sid = itemType === 'initiative' ? cleanText(r['Initiative ID']) : cleanText(r['Parent Milestone ID']) || cleanText(r['Parent Initiative ID']) || cleanText(r['Initiative ID']);
-    if (itemType !== 'initiative') sid = cleanText(r['Initiative ID']);
+    var sid = cleanText(r['Initiative ID']);
     return {
-      project_id: cleanText(r['Parent Initiative ID']) || cleanText(r['Initiative ID']),
+      project_id: itemType === 'initiative' ? cleanText(r['Initiative ID']) : cleanText(r['Parent Initiative ID']),
       smartsheet_id: sid,
       parent_initiative_id: cleanText(r['Parent Initiative ID']),
       parent_milestone_id: cleanText(r['Parent Milestone ID']),
@@ -1876,6 +1879,7 @@ function ProjectTimeline(p) {
   if (!items.length) return html`<div class="card">
     <h2>Delivery plan</h2>
     <p class="muted small">No milestones or activities imported yet. Import a hierarchy SmartSheet file to activate the Project Manager workspace.</p>
+    <${A} href="/import-export" class="btn secondary no-print">Open SmartSheet Import<//>
   </div>`;
   return html`<div class="card">
     <h2>Delivery plan</h2>
@@ -2313,7 +2317,10 @@ function ImportExportPage() {
       <input type="file" accept=".xlsx,.csv" onChange=${onFile} disabled=${bz[0]} />
       ${preview && html`<div style="margin-top:14px">
         <p><b>${preview.rows.length}</b> projects found in <b>${preview.fileName}</b>.
-          ${preview.mode === 'hierarchy' && html`<br /><span class="small muted">${preview.workItems.length} milestones / activities will be attached to the project workspace.</span>`}</p>
+          ${preview.mode === 'hierarchy' && html`<br /><span class="small muted">
+            ${(preview.workItems || []).filter(function(w){return w.item_type === 'milestone'}).length} milestones and
+            ${(preview.workItems || []).filter(function(w){return w.item_type === 'activity'}).length} activities will be attached to the project workspace.
+          </span>`}</p>
         ${preview.dupes.length > 0 && html`<p class="small" style="color:var(--amber)">⚠ ${preview.dupes.length} existing project IDs will be updated: ${preview.dupes.join(', ')}</p>`}
         ${preview.warnings.map(function(w,i){return html`<p key=${i} class="small" style="color:var(--amber)">⚠ ${w}</p>`})}
         <div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
