@@ -164,12 +164,42 @@ table.data tr:hover td{background:#faf9f6}
 .governance-empty{padding:24px 12px;text-align:center;color:var(--muted)}
 .review-action-choice{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px}
 .review-action-choice button{padding:9px 8px}
+.cockpit-tabs{margin:4px 0 18px;overflow-x:auto;white-space:nowrap}
+.cockpit-context{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+.cockpit-kpis{display:grid;grid-template-columns:repeat(5,minmax(140px,1fr));gap:10px;margin-bottom:16px}
+.cockpit-kpi{background:#fff;border:1px solid var(--border);border-top:3px solid var(--border);padding:13px 14px;min-height:104px}
+.cockpit-kpi strong{display:block;font-size:25px;line-height:1.05;margin:7px 0 5px}
+.cockpit-kpi span{display:block}
+.cockpit-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.cockpit-section-head h2{margin-bottom:0}
+.cockpit-two-col{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,.7fr);gap:14px}
+.intervention-list{border-top:1px solid var(--border)}
+.intervention-row{display:grid;grid-template-columns:82px minmax(180px,1fr) minmax(220px,1.2fr) minmax(145px,.65fr) 100px;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--border)}
+.intervention-row:last-child{border-bottom:none}
+.intervention-project{min-width:0;overflow-wrap:anywhere}
+.intervention-project strong{display:block}
+.intervention-reason{min-width:0;overflow-wrap:anywhere}
+.portfolio-table{overflow-x:auto}
+.portfolio-table table{min-width:760px}
+.portfolio-rag{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.portfolio-rag span{display:inline-flex;align-items:center;justify-content:center;min-width:29px;height:25px;border-radius:999px;font-size:12px;font-weight:700}
+.portfolio-rag .red{background:#ffe5e3;color:#c9140b}.portfolio-rag .amber{background:#f9ead7;color:#a34d00}.portfolio-rag .green{background:#dff2ef;color:#006e66}.portfolio-rag .unknown{background:#eef0f4;color:#5f6570}
+.cockpit-signal-list{display:grid;gap:0}
+.cockpit-signal{padding:11px 0;border-bottom:1px solid var(--border)}
+.cockpit-signal:last-child{border-bottom:none}
+.cockpit-signal strong{display:block;margin-bottom:3px}
+.cockpit-load{display:grid;grid-template-columns:minmax(170px,1fr) 70px 70px 70px 110px;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+.cockpit-load:last-child{border-bottom:none}
 @media(max-width:900px){
   .pulse-fields-3,.pulse-fields-2,.pulse-detail-grid{grid-template-columns:1fr}
   .review-kpis{grid-template-columns:repeat(2,1fr)}
   .review-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
   .review-row{grid-template-columns:1fr}
   .review-row-actions{justify-content:flex-start;min-width:0}
+  .cockpit-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cockpit-two-col{grid-template-columns:1fr}
+  .intervention-row{grid-template-columns:72px minmax(0,1fr);align-items:start}
+  .intervention-reason,.intervention-owner,.intervention-due{grid-column:2}
 }
 @container (max-width:620px){
   .pulse-fields-2{grid-template-columns:1fr}
@@ -177,7 +207,7 @@ table.data tr:hover td{background:#faf9f6}
   .pulse-fields-3>.field:first-child{grid-column:1 / -1}
 }
 @container (max-width:390px){.pulse-fields-3{grid-template-columns:1fr}.pulse-fields-3>.field:first-child{grid-column:auto}}
-@media(max-width:520px){.review-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.review-filters,.review-action-choice{grid-template-columns:1fr}}
+@media(max-width:520px){.review-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.review-filters,.review-action-choice{grid-template-columns:1fr}.cockpit-kpis{grid-template-columns:1fr}.cockpit-load{grid-template-columns:minmax(0,1fr) repeat(2,52px)}.cockpit-load>*:nth-child(4),.cockpit-load>*:nth-child(5){display:none}}
 .roadmap-note{background:#f4f2ed;border:1px dashed #c9c3b7;color:#4a473f;border-radius:var(--radius);padding:10px 14px;font-size:12.5px;margin-bottom:14px}
 .progress{background:#eef0f4;border-radius:999px;height:8px;overflow:hidden}
 .progress>div{height:100%;border-radius:999px;transition:width .3s}
@@ -262,7 +292,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.13';
+var APP_VERSION = '2026.07.22.14';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -3337,7 +3367,7 @@ function exportSteercoPPT(I, P, D, chMap) {
 
 /* ================= Cockpit ================= */
 var COCKPIT_STAGES = ['Ideation (L0→L2)','G1','S1','G2','S2','G3','S3','G4','S4','G5'];
-function CockpitPage() {
+function LegacyCockpitPage() {
   var expPillar = useState(null);
   var cfl = useState({ pillar:'', stage:'' });
   var ideas = useAsync(api.listIdeas, []);
@@ -3543,6 +3573,267 @@ function CockpitPage() {
   </div>`;
 }
 
+
+function CockpitPage() {
+  var tabState = useState('Executive Overview');
+  var expandedPillar = useState(null);
+  var filterState = useState({pillar:'', stage:''});
+  var ideas = useAsync(api.listIdeas, []);
+  var docs = useAsync(api.listDeliverablesLight, []);
+  var projects = useAsync(api.listProjects, []);
+  var workItems = useAsync(api.listAllProjectWorkItems, []);
+  var updates = useAsync(api.listAllProjectUpdates, []);
+  var decisions = useAsync(api.listDecisions, []);
+  if (ideas.loading || projects.loading || decisions.loading || docs.loading || workItems.loading || updates.loading) return html`<p>Loading...</p>`;
+
+  var allIdeas = ideas.data || [], allProjects = projects.data || [], allDecisions = decisions.data || [];
+  var I = allIdeas.slice(), P = allProjects.slice(), cf = filterState[0];
+  var deliverableMap = projectDeliverableMap(allProjects, allIdeas, docs.data);
+  if (cf.pillar) {
+    I = I.filter(function(i){return (i.digital_pillar || 'Unassigned') === cf.pillar});
+    P = P.filter(function(p){return (p.digital_pillar || 'Unassigned') === cf.pillar});
+  }
+  if (cf.stage) {
+    if (cf.stage.indexOf('Ideation') === 0) {
+      I = I.filter(function(i){return ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter'].indexOf(i.stage) >= 0});
+      P = [];
+    } else if (cf.stage === 'G1') {
+      I = I.filter(function(i){return i.stage === 'G1 Approval'});
+      P = [];
+    } else {
+      I = [];
+      P = P.filter(function(p){return (p.current_stage || '').indexOf(cf.stage) === 0});
+    }
+  }
+
+  var activeProjects = P.filter(function(p){return !isProjectClosed(p)});
+  var closedProjects = P.filter(isProjectClosed);
+  var rows = weeklyReviewRows(activeProjects, workItems.data || [], updates.data || [], deliverableMap);
+  rows.forEach(function(r){
+    var latest = r.latest, work = r.health.work;
+    var plannedEndPassed = !!(r.project.planned_end_date && new Date(r.project.planned_end_date + 'T23:59:59') < new Date());
+    var blocked = !!(latest && hasGovernanceText(latest.blockers));
+    r.scheduleRisk = plannedEndPassed || work.overdue.length > 0;
+    r.deliveryStatus = r.scheduleRisk || (latest && latest.health_status === 'Red') ? 'Red'
+      : !latest || r.stale ? 'Unreported'
+      : latest.health_status === 'Amber' || blocked ? 'Amber' : 'Green';
+    r.deliveryReason = work.overdue.length ? work.overdue.length + ' overdue delivery item(s)'
+      : plannedEndPassed ? 'Planned project end date has passed'
+      : latest && latest.health_status === 'Red' ? 'Latest Weekly Pulse is Red'
+      : blocked ? 'Blocker reported in the latest Weekly Pulse'
+      : latest && latest.health_status === 'Amber' ? 'Latest Weekly Pulse is Amber'
+      : !latest ? 'Weekly Pulse has not been submitted'
+      : r.stale ? 'Weekly Pulse is more than 7 days old' : 'Delivery is on track';
+  });
+  var redRows = rows.filter(function(r){return r.deliveryStatus === 'Red'});
+  var amberRows = rows.filter(function(r){return r.deliveryStatus === 'Amber'});
+  var greenRows = rows.filter(function(r){return r.deliveryStatus === 'Green'});
+  var unreportedRows = rows.filter(function(r){return r.deliveryStatus === 'Unreported'});
+  var currentRows = rows.filter(function(r){return r.latest && r.age <= 7});
+  var missingRows = rows.filter(function(r){return !r.latest || r.stale});
+  var reportingCompliance = rows.length ? Math.round(currentRows.length * 100 / rows.length) : 100;
+  var portfolioConfidence = rows.length ? Math.round((greenRows.length + amberRows.length * .5) * 100 / rows.length) : 100;
+  var scheduleRiskRows = rows.filter(function(r){return r.scheduleRisk});
+  var scheduleConfidence = rows.length ? Math.round((rows.length - scheduleRiskRows.length) * 100 / rows.length) : 100;
+  var attentionDecisions = allDecisions.filter(function(d){return ['To Decide','Blocked','Escalated'].indexOf(d.status) >= 0});
+  var overdueDecisions = attentionDecisions.filter(function(d){return reviewDueMeta(d.due_date).overdue});
+  var capexTotal = P.reduce(function(sum,p){return sum + (Number(p.capex_keur) || 0)}, 0);
+  var budgetTotal = P.reduce(function(sum,p){return sum + (Number(p.current_year_budget) || 0)}, 0);
+  var investmentAtRisk = redRows.reduce(function(sum,r){return sum + (Number(r.project.capex_keur) || 0)}, 0);
+  var financialRows = P.filter(function(p){return p.capex_keur != null || p.current_year_budget != null});
+  var financialCoverage = P.length ? Math.round(financialRows.length * 100 / P.length) : 100;
+  var deliverableGapProjects = P.filter(function(p){return deliverableIssues(deliverableMap[p.project_id]).length > 0});
+  var unassignedProjects = activeProjects.filter(function(p){return !p.manager && !hasGovernanceText(p.project_lead)});
+  var benefitsContext = P.filter(function(p){return hasGovernanceText(p.key_benefiting_functions)});
+
+  var decisionByProject = {};
+  attentionDecisions.forEach(function(d){
+    if (d.related_id) decisionByProject[String(d.related_id)] = d;
+  });
+  var interventionRows = rows.filter(function(r){
+    var latest = r.latest;
+    return r.deliveryStatus !== 'Green' || !latest || r.stale || r.reviewStatus === 'Action required' ||
+      r.reviewStatus === 'Escalated' || (latest && (latest.decision_required || hasGovernanceText(latest.support_needed)));
+  }).map(function(r){
+    var latest = r.latest, linkedDecision = decisionByProject[r.project.id] || decisionByProject[r.project.project_id];
+    var reason = linkedDecision ? 'Decision required: ' + linkedDecision.title
+      : latest && latest.decision_required ? 'Decision requested in the latest Weekly Pulse'
+      : r.reviewStatus === 'Escalated' ? 'Weekly Pulse escalated for governance attention'
+      : r.reviewStatus === 'Action required' ? 'Recovery action requested by the Digital Team'
+      : latest && hasGovernanceText(latest.support_needed) ? 'Support requested: ' + latest.support_needed
+      : r.health.work.overdue.length ? r.health.work.overdue.length + ' overdue delivery item(s)'
+      : !latest ? 'Weekly Pulse has not been submitted'
+      : r.stale ? 'Weekly Pulse is more than 7 days old'
+      : r.health.reasons[0] || 'Delivery exception requires review';
+    var score = linkedDecision || (latest && latest.decision_required) ? 110 : r.deliveryStatus === 'Red' ? 100 : r.score;
+    var due = linkedDecision && linkedDecision.due_date ? linkedDecision.due_date : r.project.planned_end_date;
+    var kind = linkedDecision || (latest && latest.decision_required) ? 'Decision'
+      : r.deliveryStatus === 'Red' || r.deliveryStatus === 'Amber' ? 'Delivery'
+      : !latest || r.stale ? 'Reporting'
+      : latest && hasGovernanceText(latest.support_needed) ? 'Support' : 'Governance';
+    return {row:r, reason:reason, score:score, due:due, kind:kind};
+  }).sort(function(a,b){return b.score - a.score || a.row.project.project_id.localeCompare(b.row.project.project_id)}).slice(0,8);
+
+  var recentOutcomes = allDecisions.filter(function(d){
+    return d.status === 'Decided' && d.outcome && String(d.title || '').toLowerCase().indexOf('qualify idea') !== 0;
+  }).slice(0,4).map(function(d){return {title:d.title, meta:d.outcome + (d.committee_target ? ' - ' + d.committee_target : '')}})
+    .concat(I.filter(function(i){return i.stage === 'Converted'}).slice(0,3).map(function(i){return {title:i.idea_id + ' converted to project', meta:i.title}}))
+    .concat(closedProjects.slice(0,3).map(function(p){return {title:p.project_name, meta:'Project closed'}})).slice(0,5);
+
+  var pillarNames = {};
+  P.forEach(function(p){pillarNames[p.digital_pillar || 'Unassigned'] = true});
+  var portfolioByPillar = Object.keys(pillarNames).sort(comparePillars).map(function(pillar){
+    var pp = activeProjects.filter(function(p){return (p.digital_pillar || 'Unassigned') === pillar});
+    var pr = rows.filter(function(r){return (r.project.digital_pillar || 'Unassigned') === pillar});
+    return {
+      pillar:pillar, projects:pp.length,
+      red:pr.filter(function(r){return r.deliveryStatus === 'Red'}).length,
+      amber:pr.filter(function(r){return r.deliveryStatus === 'Amber'}).length,
+      green:pr.filter(function(r){return r.deliveryStatus === 'Green'}).length,
+      unknown:pr.filter(function(r){return r.deliveryStatus === 'Unreported'}).length,
+      reporting:pr.length ? Math.round(pr.filter(function(r){return r.latest && r.age <= 7}).length * 100 / pr.length) : 100,
+      schedule:pr.filter(function(r){return r.scheduleRisk}).length,
+      gaps:pp.filter(function(p){return deliverableIssues(deliverableMap[p.project_id]).length > 0}).length
+    };
+  });
+
+  var pillarCost = {};
+  P.forEach(function(p){
+    var key = p.digital_pillar || 'Unassigned';
+    var value = pillarCost[key] = pillarCost[key] || {count:0, capex:0, budget:0, noData:0, benefits:0};
+    value.count++; value.capex += Number(p.capex_keur) || 0; value.budget += Number(p.current_year_budget) || 0;
+    if (p.capex_keur == null && p.current_year_budget == null) value.noData++;
+    if (hasGovernanceText(p.key_benefiting_functions)) value.benefits++;
+  });
+
+  var managerLoad = {};
+  rows.forEach(function(r){
+    var key = projectManagerLabel(r.project);
+    var value = managerLoad[key] = managerLoad[key] || {name:key, projects:0, red:0, amber:0, current:0};
+    value.projects++;
+    if (r.deliveryStatus === 'Red') value.red++;
+    if (r.deliveryStatus === 'Amber') value.amber++;
+    if (r.latest && r.age <= 7) value.current++;
+  });
+  var managerRows = Object.keys(managerLoad).map(function(k){return managerLoad[k]}).sort(function(a,b){return b.projects-a.projects || a.name.localeCompare(b.name)});
+  var funnel = [
+    ['Submitted', I.filter(function(i){return i.stage === 'L0 Submitted'}).length],
+    ['In triage', I.filter(function(i){return i.stage === 'L0 Triage'}).length],
+    ['Qualified', I.filter(function(i){return ['L1 Qualified','L2 BC/Charter'].indexOf(i.stage) >= 0}).length],
+    ['At G1', I.filter(function(i){return i.stage === 'G1 Approval'}).length],
+    ['Converted', I.filter(function(i){return i.stage === 'Converted'}).length]
+  ];
+  var tabs = ['Executive Overview','Portfolio Performance','Investment & Benefits','Pipeline & Capacity'];
+  var pillars = {};
+  allIdeas.concat(allProjects).forEach(function(x){pillars[x.digital_pillar || 'Unassigned'] = true});
+
+  function kpi(label, value, detail, color) {
+    return html`<div class="cockpit-kpi" style=${color ? 'border-top-color:' + color : ''}><span class="muted small">${label}</span><strong>${value}</strong><span class="muted small">${detail}</span></div>`;
+  }
+  function countLabel(count, noun) { return count + ' ' + noun + (count === 1 ? '' : 's'); }
+
+  return html`<div>
+    <div class="topbar">
+      <div><h1>Portfolio Cockpit</h1><p class="muted small mb0">Portfolio confidence, interventions and investment decisions.</p></div>
+      <button class="btn no-print" onClick=${function(){exportSteercoPPT(I, P, allDecisions, deliverableMap)}}>Export PPT pack</button>
+    </div>
+    <div class="filters no-print">
+      <select value=${cf.pillar} onChange=${function(e){filterState[1]({pillar:e.target.value,stage:cf.stage})}}><option value="">All pillars</option>${Object.keys(pillars).sort(comparePillars).map(function(p){return html`<option key=${p}>${p}</option>`})}</select>
+      <select value=${cf.stage} onChange=${function(e){filterState[1]({pillar:cf.pillar,stage:e.target.value})}}><option value="">All stages</option>${COCKPIT_STAGES.map(function(s){return html`<option key=${s}>${s}</option>`})}</select>
+      ${(cf.pillar || cf.stage) && html`<button class="btn secondary small" onClick=${function(){filterState[1]({pillar:'',stage:''})}}>Clear filters</button>`}
+    </div>
+    <div class="cockpit-context">
+      <${Badge} color="gray">${countLabel(activeProjects.length,'active project')}<//>
+      <${Badge} color="gray">${countLabel(I.filter(function(i){return ACTIVE_STAGES.indexOf(i.stage) >= 0}).length,'active idea')}<//>
+      <${Badge} color="gray">${countLabel(closedProjects.length,'closed project')}<//>
+      <span class="muted small">As of ${fmtDate(new Date())}${cf.pillar || cf.stage ? ' - filtered view' : ''}</span>
+    </div>
+    <div class="tabs cockpit-tabs no-print">${tabs.map(function(t){return html`<button key=${t} class=${tabState[0]===t?'active':''} onClick=${function(){tabState[1](t)}}>${t}</button>`})}</div>
+
+    ${tabState[0] === 'Executive Overview' && html`<div>
+      <div class="cockpit-kpis">
+        ${kpi('Portfolio confidence', portfolioConfidence + '%', redRows.length + ' red - ' + amberRows.length + ' amber - ' + greenRows.length + ' green - ' + unreportedRows.length + ' unreported', redRows.length ? 'var(--red)' : amberRows.length || unreportedRows.length ? 'var(--amber)' : 'var(--green)')}
+        ${kpi('Decisions needing attention', attentionDecisions.length, overdueDecisions.length ? overdueDecisions.length + ' overdue' : 'No overdue decision', overdueDecisions.length ? 'var(--red)' : 'var(--amber)')}
+        ${kpi('Schedule confidence', scheduleConfidence + '%', countLabel(scheduleRiskRows.length,'project') + ' at schedule risk', scheduleRiskRows.length ? 'var(--amber)' : 'var(--green)')}
+        ${kpi('Investment at risk', Math.round(investmentAtRisk) + ' kEUR', 'CAPEX attached to red projects', investmentAtRisk ? 'var(--red)' : 'var(--green)')}
+        ${kpi('Reporting compliance', reportingCompliance + '%', currentRows.length + '/' + rows.length + ' current Weekly Pulses', reportingCompliance < 80 ? 'var(--red)' : reportingCompliance < 95 ? 'var(--amber)' : 'var(--green)')}
+      </div>
+      <div class="cockpit-two-col">
+        <div class="card">
+          <div class="cockpit-section-head"><div><h2>Intervention queue</h2><p class="muted small mb0">The highest-priority exceptions requiring management action.</p></div><${A} href="/reviews">Open Weekly Review<//></div>
+          <div class="intervention-list">
+            ${interventionRows.map(function(item){var r=item.row, due=reviewDueMeta(item.due);return html`<div key=${r.project.id} class="intervention-row">
+              <div><${Badge} color=${item.kind==='Decision'||r.deliveryStatus==='Red'?'red':item.kind==='Reporting'||item.kind==='Support'?'amber':'gray'}>${item.kind}<//></div>
+              <div class="intervention-project"><strong><${A} href=${'/projects/'+r.project.id}>${r.project.project_id}<//></strong><span class="small">${r.project.project_name}</span></div>
+              <div class="intervention-reason small">${item.reason}</div>
+              <div class="intervention-owner small"><span class="muted">Owner</span><br />${projectManagerLabel(r.project)}</div>
+              <div class=${'intervention-due review-deadline '+(due.overdue?'overdue':'')}>${due.label}</div>
+            </div>`})}
+            ${!interventionRows.length && html`<div class="governance-empty">No intervention is required in the current view.</div>`}
+          </div>
+        </div>
+        <div style="display:grid;gap:14px;align-content:start">
+          <div class="card">
+            <div class="cockpit-section-head"><h2>Decision agenda</h2><${A} href="/decisions">Decision Log<//></div>
+            <div class="cockpit-signal-list">${attentionDecisions.slice(0,6).map(function(d){var due=reviewDueMeta(d.due_date);return html`<div key=${d.id} class="cockpit-signal"><div style="display:flex;justify-content:space-between;gap:8px"><${Badge} color=${d.status==='Blocked'||d.status==='Escalated'?'red':'amber'}>${d.status}<//><span class=${'review-deadline '+(due.overdue?'overdue':'')}>${due.label}</span></div><strong>${d.title}</strong><span class="muted small">${d.committee_target || 'Forum to confirm'}</span></div>`})}${!attentionDecisions.length && html`<p class="muted small">No decision needs attention.</p>`}</div>
+          </div>
+          <div class="card">
+            <h2>Recent outcomes</h2>
+            <div class="cockpit-signal-list">${recentOutcomes.map(function(o,i){return html`<div key=${i} class="cockpit-signal"><strong>${o.title}</strong><span class="muted small">${o.meta}</span></div>`})}${!recentOutcomes.length && html`<p class="muted small">No recorded portfolio outcome yet.</p>`}</div>
+          </div>
+        </div>
+      </div>
+    </div>`}
+
+    ${tabState[0] === 'Portfolio Performance' && html`<div>
+      <div class="cockpit-kpis">
+        ${kpi('Red delivery health', redRows.length, 'Calculated from project delivery data', redRows.length ? 'var(--red)' : 'var(--green)')}
+        ${kpi('Amber delivery health', amberRows.length, 'Projects requiring monitoring', amberRows.length ? 'var(--amber)' : 'var(--green)')}
+        ${kpi('Schedule risk', scheduleRiskRows.length, 'Overdue or past planned end date', scheduleRiskRows.length ? 'var(--red)' : 'var(--green)')}
+        ${kpi('Deliverable gaps', deliverableGapProjects.length, 'Business Case or Project Charter', deliverableGapProjects.length ? 'var(--amber)' : 'var(--green)')}
+        ${kpi('Reporting missing / stale', missingRows.length, 'Weekly Pulse older than 7 days or missing', missingRows.length ? 'var(--amber)' : 'var(--green)')}
+      </div>
+      <div class="card portfolio-table">
+        <div class="cockpit-section-head"><div><h2>Performance by digital pillar</h2><p class="muted small mb0">Delivery RAG is calculated separately from reporting and governance completeness. Order: red, amber, green, unreported.</p></div></div>
+        <table class="data"><thead><tr><th>Digital pillar</th><th>Active projects</th><th>Delivery RAG</th><th>Reporting</th><th>Schedule risk</th><th>Deliverable gaps</th></tr></thead><tbody>
+          ${portfolioByPillar.map(function(r){return html`<tr key=${r.pillar}><td><strong>${r.pillar}</strong></td><td>${r.projects}</td><td><div class="portfolio-rag"><span class="red">${r.red}</span><span class="amber">${r.amber}</span><span class="green">${r.green}</span><span class="unknown">${r.unknown}</span></div></td><td>${r.reporting}%</td><td>${r.schedule}</td><td>${r.gaps}</td></tr>`})}
+          ${!portfolioByPillar.length && html`<tr><td colSpan="6" class="muted">No project in the current view.</td></tr>`}
+        </tbody></table>
+      </div>
+      <div class="grid cols-2">
+        <div class="card"><h2>Delivery exceptions</h2><div class="cockpit-signal-list">${rows.filter(function(r){return r.deliveryStatus !== 'Green'}).slice(0,8).map(function(r){return html`<div key=${r.project.id} class="cockpit-signal"><div style="display:flex;justify-content:space-between;gap:8px">${healthBadge(r.deliveryStatus)}<${A} href=${'/projects/'+r.project.id}>Open project<//></div><strong>${r.project.project_id} - ${r.project.project_name}</strong><span class="muted small">${r.deliveryReason}</span></div>`})}${!rows.some(function(r){return r.deliveryStatus !== 'Green'}) && html`<p class="muted small">No delivery exception.</p>`}</div></div>
+        <div class="card"><h2>Data quality & governance</h2><div class="cockpit-signal-list"><div class="cockpit-signal"><strong>${missingRows.length} missing or stale Weekly Pulses</strong><span class="muted small">Reporting compliance: ${reportingCompliance}%</span></div><div class="cockpit-signal"><strong>${P.length-financialRows.length} projects without financial data</strong><span class="muted small">Financial coverage: ${financialCoverage}%</span></div><div class="cockpit-signal"><strong>${deliverableGapProjects.length} projects with BC / PC gaps</strong><span class="muted small">Required deliverables are governed in Digital Pulse.</span></div><div class="cockpit-signal"><strong>${unassignedProjects.length} projects without a Project Manager</strong><span class="muted small">Assign ownership in Administration.</span></div></div></div>
+      </div>
+    </div>`}
+
+    ${tabState[0] === 'Investment & Benefits' && html`<div>
+      <div class="cockpit-kpis">
+        ${kpi('Total CAPEX', Math.round(capexTotal) + ' kEUR', countLabel(P.length,'project') + ' in scope', 'var(--text)')}
+        ${kpi('Current year budget', Math.round(budgetTotal) + ' kEUR', 'Budget recorded in Digital Pulse', 'var(--text)')}
+        ${kpi('Investment at risk', Math.round(investmentAtRisk) + ' kEUR', 'CAPEX attached to red projects', investmentAtRisk ? 'var(--red)' : 'var(--green)')}
+        ${kpi('Financial coverage', financialCoverage + '%', financialRows.length + '/' + P.length + ' projects documented', financialCoverage < 90 ? 'var(--amber)' : 'var(--green)')}
+        ${kpi('Benefits context', benefitsContext.length + '/' + P.length, 'Benefiting functions documented', benefitsContext.length < P.length ? 'var(--amber)' : 'var(--green)')}
+      </div>
+      <div class="card portfolio-table">
+        <div class="cockpit-section-head"><div><h2>Investment by digital pillar</h2><p class="muted small mb0">Select a pillar to inspect project-level cost coverage.</p></div></div>
+        <table class="data"><thead><tr><th>Digital pillar</th><th>Projects</th><th>CAPEX kEUR</th><th>Current year kEUR</th><th>No financial data</th><th>Benefits context</th></tr></thead><tbody>
+          ${Object.keys(pillarCost).sort(comparePillars).map(function(key){var value=pillarCost[key],open=expandedPillar[0]===key;var result=[html`<tr key=${key} onClick=${function(){expandedPillar[1](open?null:key)}} style="cursor:pointer"><td><strong>${open?'v':'>'} ${key}</strong></td><td>${value.count}</td><td>${Math.round(value.capex)}</td><td>${Math.round(value.budget)}</td><td>${value.noData}</td><td>${value.benefits}/${value.count}</td></tr>`];if(open){P.filter(function(p){return (p.digital_pillar||'Unassigned')===key}).forEach(function(p){result.push(html`<tr key=${p.id} style="background:#faf9f6"><td style="padding-left:28px"><${A} href=${'/projects/'+p.id}>${p.project_id} ${p.project_name}<//></td><td>${p.current_stage||'-'}</td><td>${p.capex_keur!=null?p.capex_keur:'Missing'}</td><td>${p.current_year_budget!=null?p.current_year_budget:'Missing'}</td><td>${p.capex_keur==null&&p.current_year_budget==null?'Yes':'-'}</td><td>${hasGovernanceText(p.key_benefiting_functions)?'Documented':'Missing'}</td></tr>`)});}return result})}
+        </tbody></table>
+      </div>
+      <div class="card"><div class="cockpit-section-head"><div><h2>Benefits governance</h2><p class="muted small mb0">This view reports whether the benefits context is documented. It does not claim benefits realization until measurable baselines, targets and actuals are stored.</p></div></div><div class="grid cols-3"><div><strong>${benefitsContext.length}</strong><p class="muted small">Projects with benefiting functions documented</p></div><div><strong>${P.length-benefitsContext.length}</strong><p class="muted small">Projects needing benefits context</p></div><div><strong>${closedProjects.length}</strong><p class="muted small">Closed projects available for outcome review</p></div></div></div>
+    </div>`}
+
+    ${tabState[0] === 'Pipeline & Capacity' && html`<div>
+      <div class="cockpit-kpis">${funnel.map(function(f){return kpi(f[0],f[1],'Ideas in this pipeline stage','var(--border)')})}</div>
+      <div class="card"><div class="cockpit-section-head"><div><h2>Portfolio pipeline</h2><p class="muted small mb0">Ideas and projects by pillar and governance stage.</p></div></div><${PipelineChart} ideas=${I} projects=${P} deliverableMap=${deliverableMap} /></div>
+      <div class="card"><div class="cockpit-section-head"><div><h2>Delivery load by Project Manager</h2><p class="muted small mb0">A workload signal based on assigned active projects, not a resource capacity forecast.</p></div><${A} href="/admin">Manage assignments<//></div>
+        <div class="cockpit-load muted small"><strong>Project Manager</strong><strong>Projects</strong><strong>Red</strong><strong>Amber</strong><strong>Current</strong></div>
+        ${managerRows.map(function(r){return html`<div key=${r.name} class="cockpit-load"><strong>${r.name}</strong><span>${r.projects}</span><span>${r.red}</span><span>${r.amber}</span><span>${r.current}/${r.projects}</span></div>`})}
+        ${!managerRows.length && html`<p class="muted small">No active project in the current view.</p>`}
+      </div>
+    </div>`}
+  </div>`;
+}
 
 /* ================= Reviews (by pillar / lead) ================= */
 function LegacyReviewPulseModal(p) {
