@@ -366,6 +366,14 @@ function roleLabel(role) {
 
 /* ================= Data access layer (Supabase) ================= */
 function one(r) { if (r.error) throw r.error; return r.data; }
+function withTimeout(promise, ms, fallback) {
+  return new Promise(function(resolve, reject){
+    var done = false;
+    var t = setTimeout(function(){ if (!done) { done = true; resolve(fallback); } }, ms);
+    promise.then(function(v){ if (!done) { done = true; clearTimeout(t); resolve(v); } })
+      .catch(function(e){ if (!done) { done = true; clearTimeout(t); reject(e); } });
+  });
+}
 var api = {
   getSession: function(){ return sb.auth.getSession().then(function(r){ return r.data.session; }); },
   onAuthChange: function(cb){ return sb.auth.onAuthStateChange(function(_e,s){ cb(s); }); },
@@ -400,10 +408,10 @@ var api = {
   createDecision: function(f){ return sb.from('decisions').insert(f).select().single().then(one); },
   updateDecision: function(id,f){ return sb.from('decisions').update(f).eq('id',id).select().single().then(one); },
   listProjects: function(){
-    return sb.from('projects').select('*, manager:project_manager_id(name,email)').order('project_id').then(function(r){
+    return withTimeout(sb.from('projects').select('*, manager:project_manager_id(name,email)').order('project_id'), 6000, {error:{message:'project_manager_id timeout'}}).then(function(r){
       var msg = r.error && (r.error.message || '');
       if (r.error && (msg.indexOf('project_manager_id') >= 0 || msg.indexOf('relationship') >= 0 || msg.indexOf('schema cache') >= 0)) {
-        return sb.from('projects').select('*').order('project_id').then(one).then(function(rows){
+        return withTimeout(sb.from('projects').select('*').order('project_id'), 6000, {data:[], error:null}).then(one).then(function(rows){
           return rows.map(function(row){ row.manager = null; return row; });
         });
       }
@@ -413,14 +421,14 @@ var api = {
   upsertProjects: function(rows){ return sb.from('projects').upsert(rows,{onConflict:'project_id'}).select().then(one); },
   updateProject: function(id,f){ return sb.from('projects').update(f).eq('id',id).select().single().then(one); },
   listProjectWorkItems: function(projectId){
-    return sb.from('project_work_items').select('*').eq('project_id', projectId).order('planned_start_date',{ascending:true,nullsFirst:false}).then(function(r){
+    return withTimeout(sb.from('project_work_items').select('*').eq('project_id', projectId).order('planned_start_date',{ascending:true,nullsFirst:false}), 5000, {data:[], error:null}).then(function(r){
       var msg = r.error && (r.error.message || '');
       if (r.error && (msg.indexOf('project_work_items') >= 0 || msg.indexOf('schema cache') >= 0 || msg.indexOf('does not exist') >= 0)) return [];
       return one(r);
     });
   },
   listAllProjectWorkItems: function(){
-    return sb.from('project_work_items').select('*').order('planned_end_date',{ascending:true,nullsFirst:false}).then(function(r){
+    return withTimeout(sb.from('project_work_items').select('*').order('planned_end_date',{ascending:true,nullsFirst:false}), 5000, {data:[], error:null}).then(function(r){
       var msg = r.error && (r.error.message || '');
       if (r.error && (msg.indexOf('project_work_items') >= 0 || msg.indexOf('schema cache') >= 0 || msg.indexOf('does not exist') >= 0)) return [];
       return one(r);
@@ -431,14 +439,14 @@ var api = {
     return sb.from('project_work_items').upsert(rows,{onConflict:'project_id,smartsheet_id'}).select().then(one);
   },
   listProjectUpdates: function(projectRef){
-    return sb.from('project_updates').select('*, author:author_id(name,email)').eq('project_ref', projectRef).order('update_week',{ascending:false}).then(function(r){
+    return withTimeout(sb.from('project_updates').select('*, author:author_id(name,email)').eq('project_ref', projectRef).order('update_week',{ascending:false}), 5000, {data:[], error:null}).then(function(r){
       var msg = r.error && (r.error.message || '');
       if (r.error && (msg.indexOf('project_updates') >= 0 || msg.indexOf('schema cache') >= 0 || msg.indexOf('does not exist') >= 0)) return [];
       return one(r);
     });
   },
   listAllProjectUpdates: function(){
-    return sb.from('project_updates').select('*, author:author_id(name,email)').order('update_week',{ascending:false}).then(function(r){
+    return withTimeout(sb.from('project_updates').select('*, author:author_id(name,email)').order('update_week',{ascending:false}), 5000, {data:[], error:null}).then(function(r){
       var msg = r.error && (r.error.message || '');
       if (r.error && (msg.indexOf('project_updates') >= 0 || msg.indexOf('schema cache') >= 0 || msg.indexOf('does not exist') >= 0)) return [];
       return one(r);
