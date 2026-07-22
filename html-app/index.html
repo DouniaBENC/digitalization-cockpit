@@ -165,7 +165,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.4';
+var APP_VERSION = '2026.07.22.5';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -1995,6 +1995,35 @@ function ProjectDetailPage(p) {
   var delivery = projectDeliveryHealth(pr, workItems.data || [], updates.data || [], !!prCharter);
   var canUpdate = isPMTT || p.auth.profile.role === 'project_lead';
 
+  function setU(key, value) {
+    uf[1](function(current){
+      var next = Object.assign({}, current);
+      next[key] = value;
+      return next;
+    });
+  }
+  function submitUpdate() {
+    var form = uf[0];
+    if (!form.progress_summary.trim()) return;
+    bz[1](true); er[1](null);
+    api.createProjectUpdate({
+      project_ref: pr.id,
+      author_id: p.auth.profile.id,
+      update_week: new Date().toISOString().slice(0,10),
+      health_status: form.health_status,
+      progress_summary: form.progress_summary.trim(),
+      blockers: form.blockers.trim() || null,
+      next_actions: form.next_actions.trim() || null,
+      support_needed: form.support_needed.trim() || null
+    }).then(function(){
+      uf[1]({ health_status:'Green', progress_summary:'', blockers:'', next_actions:'', support_needed:'' });
+      updates.reload();
+    }).catch(function(e){
+      er[1](userErrorMessage(e));
+    }).finally(function(){
+      bz[1](false);
+    });
+  }
   function postComment() {
     if (!cm[0].trim()) return;
     api.addComment('Project', pr.id, p.auth.profile.id, cm[0].trim()).then(function(){ cm[1](''); activity.reload(); });
