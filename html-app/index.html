@@ -179,7 +179,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.8';
+var APP_VERSION = '2026.07.22.9';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -332,9 +332,35 @@ function projectManagerLabel(p) {
   if (p && p.manager) return profileLabel(p.manager);
   return (p && p.project_lead) || 'Unassigned';
 }
-function isWorkItemDone(w) {
+function hasCompletedStatus(w) {
   var s = String(w.status || '').toLowerCase();
   return ['complete','completed','done','closed','achieved'].some(function(x){ return s.indexOf(x) >= 0; });
+}
+function workItemProgress(w) {
+  if (hasCompletedStatus(w)) return 100;
+  var n = Number(w.progress_percent);
+  return isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 0;
+}
+function isWorkItemDone(w) { return hasCompletedStatus(w) || workItemProgress(w) >= 100; }
+function activitiesForMilestone(milestone, items) {
+  return (items || []).filter(function(w){
+    return w.item_type === 'activity' && w.parent_milestone_id === milestone.smartsheet_id;
+  });
+}
+function milestoneProgress(milestone, items) {
+  var activities = activitiesForMilestone(milestone, items);
+  if (!activities.length) return workItemProgress(milestone);
+  return Math.round(activities.reduce(function(sum,w){ return sum + workItemProgress(w); }, 0) / activities.length);
+}
+function milestoneStatus(milestone, items) {
+  var activities = activitiesForMilestone(milestone, items);
+  if (!activities.length) return milestone.status || 'Not Started';
+  var pct = milestoneProgress(milestone, items);
+  if (pct >= 100) return 'Completed';
+  var manual = String(milestone.status || '').toLowerCase();
+  if (manual.indexOf('block') >= 0) return 'Blocked';
+  if (manual.indexOf('hold') >= 0) return 'On Hold';
+  return pct > 0 ? 'In Progress' : 'Not Started';
 }
 function isProjectClosed(p) {
   return (p.current_stage||'').indexOf('G5') === 0 || (p.current_stage||'').indexOf('S4') === 0;
@@ -343,16 +369,23 @@ function projectWorkSummary(items) {
   var all = (items || []).filter(function(w){ return w.item_type === 'milestone' || w.item_type === 'activity'; });
   var milestones = all.filter(function(w){ return w.item_type === 'milestone'; });
   var activities = all.filter(function(w){ return w.item_type === 'activity'; });
-  var done = all.filter(isWorkItemDone).length;
-  var progressTotal = all.reduce(function(sum,w){
-    return sum + (w.progress_percent == null ? (isWorkItemDone(w) ? 100 : 0) : Number(w.progress_percent));
+  var measured = activities.length ? activities : milestones;
+  var done = measured.filter(function(w){
+    return w.item_type === 'milestone' ? milestoneProgress(w, all) >= 100 : isWorkItemDone(w);
+  }).length;
+  var progressTotal = measured.reduce(function(sum,w){
+    return sum + (w.item_type === 'milestone' ? milestoneProgress(w, all) : workItemProgress(w));
   }, 0);
   var today = new Date();
-  var overdue = all.filter(function(w){ return !isWorkItemDone(w) && w.planned_end_date && new Date(w.planned_end_date) < today; });
-  var next = milestones.filter(function(w){ return !isWorkItemDone(w) && w.planned_end_date; })
+  var overdue = all.filter(function(w){
+    var done = w.item_type === 'milestone' ? milestoneProgress(w, all) >= 100 : isWorkItemDone(w);
+    return !done && w.planned_end_date && new Date(w.planned_end_date) < today;
+  });
+  var next = milestones.filter(function(w){ return milestoneProgress(w, all) < 100 && w.planned_end_date; })
     .sort(function(a,b){ return new Date(a.planned_end_date) - new Date(b.planned_end_date); })[0] || null;
-  return { total:all.length, milestones:milestones.length, activities:activities.length,
-    done:done, pct:all.length ? Math.round(progressTotal / all.length) : null, overdue:overdue, next:next };
+  return { total:measured.length, milestones:milestones.length, activities:activities.length,
+    done:done, unit:activities.length ? 'activities' : milestones.length ? 'milestones' : 'items',
+    pct:measured.length ? Math.round(progressTotal / measured.length) : null, overdue:overdue, next:next };
 }
 function latestProjectUpdate(updates) {
   return (updates || []).slice().sort(function(a,b){ return new Date(b.update_week || b.created_at) - new Date(a.update_week || a.created_at); })[0] || null;
@@ -629,6 +662,18 @@ function parseHierarchyProjectRows(raw) {
       smartsheet_row_id: cleanText(r['Smartsheet Row ID']) || cleanText(r['Row ID'])
     };
   });
+  workItems.forEach(function(w){
+    if (w.item_type === 'activity') {
+      w.progress_percent = workItemProgress(w);
+      if (w.progress_percent >= 100) w.status = 'Completed';
+    }
+  });
+  workItems.forEach(function(w){
+    if (w.item_type === 'milestone') {
+      w.progress_percent = milestoneProgress(w, workItems);
+      w.status = milestoneStatus(w, workItems);
+    }
+  });
   return { projects: projects, workItems: workItems };
 }
 function parseSmartsheetFile(file) {
@@ -667,6 +712,10 @@ function exportProjectPlanToSmartsheet(project, items) {
     });
   }
   var rows = ordered.map(function(w){
+    var computedProgress = w.item_type === 'milestone' ? milestoneProgress(w, ordered)
+      : w.item_type === 'activity' ? workItemProgress(w) : null;
+    var computedStatus = w.item_type === 'milestone' ? milestoneStatus(w, ordered)
+      : w.item_type === 'activity' && computedProgress >= 100 ? 'Completed' : w.status;
     return {
       'Category': w.item_type.charAt(0).toUpperCase() + w.item_type.slice(1),
       'Assigned to (Nexans email)': w.owner_email || '',
@@ -681,8 +730,8 @@ function exportProjectPlanToSmartsheet(project, items) {
       'Workstream': w.workstream || '',
       'Sub-Workstream': w.sub_workstream || '',
       'Stage': w.stage || '',
-      'Status': w.status || '',
-      '% Complete': w.progress_percent == null ? '' : w.progress_percent,
+      'Status': computedStatus || '',
+      '% Complete': computedProgress == null ? '' : computedProgress,
       'Planned start date': w.planned_start_date || '',
       'Planned end date': w.planned_end_date || '',
       'Deliverable to complete (description)': w.deliverable || '',
@@ -1963,9 +2012,9 @@ function ProjectTimeline(p) {
     var late = !isWorkItemDone(w) && w.planned_end_date && new Date(w.planned_end_date) < new Date();
     return 'status-dot ' + (isWorkItemDone(w) ? 'done' : late ? 'late' : '');
   }
-  function progress(w) {
-    if (w.progress_percent == null) return null;
-    return html`<div class="item-progress"><${Progress} pct=${w.progress_percent} /><span class="small muted">${w.progress_percent}%</span></div>`;
+  function progress(w, computed, automatic) {
+    var pct = computed == null ? workItemProgress(w) : computed;
+    return html`<div class="item-progress" title=${automatic ? 'Calculated from child activities' : ''}><${Progress} pct=${pct} /><span class="small muted">${pct}%${automatic ? ' · auto' : ''}</span></div>`;
   }
   function sync(w) {
     if (w.sync_status === 'conflict') return html`<${Badge} color="red">Conflict<//>`;
@@ -1991,16 +2040,19 @@ function ProjectTimeline(p) {
     <div class="timeline">
       ${milestones.map(function(m){
         var acts = byMilestone[m.smartsheet_id] || [];
+        var milestonePct = milestoneProgress(m, ordered);
+        var milestoneState = milestoneStatus(m, ordered);
+        var milestoneDone = milestonePct >= 100;
         return html`<div class="milestone" key=${m.id || m.smartsheet_id}>
           <div class="milestone-head">
             <div>
               <b>${m.name}</b>
-              <div class="small muted">${fmtDate(m.planned_start_date)} → ${fmtDate(m.planned_end_date)} · ${m.status || 'Status ?'}</div>
-              ${progress(m)}
+              <div class="small muted">${fmtDate(m.planned_start_date)} → ${fmtDate(m.planned_end_date)} · ${milestoneState}</div>
+              ${progress(m, milestonePct, acts.length > 0)}
               ${m.deliverable && html`<div class="small" style="margin-top:4px">${m.deliverable}</div>`}
             </div>
-            <div class="plan-item-actions">${sync(m)}${healthBadge(isWorkItemDone(m) ? 'Green' : (m.planned_end_date && new Date(m.planned_end_date) < new Date()) ? 'Red' : 'Amber')}
-              ${p.canEdit && html`<button class="btn secondary small icon-label no-print" onClick=${function(){p.onEdit(m)}} title="Edit milestone"><${NavIcon} name="edit" /> Edit</button>`}
+            <div class="plan-item-actions">${sync(m)}${healthBadge(milestoneDone ? 'Green' : (m.planned_end_date && new Date(m.planned_end_date) < new Date()) ? 'Red' : 'Amber')}
+              ${p.canEdit && html`<button class="btn secondary small icon-label no-print" onClick=${function(){p.onEdit(Object.assign({}, m, { calculated_progress_percent:milestonePct }))}} title="Edit milestone"><${NavIcon} name="edit" /> Edit</button>`}
               ${actions('activity', m.smartsheet_id)}
             </div>
           </div>
@@ -2009,7 +2061,7 @@ function ProjectTimeline(p) {
               <span class=${dot(a)}></span>
               <div>
                 <b class="small">${a.name}</b>
-                <div class="small muted">${a.owner_email || 'No owner'} · ${fmtDate(a.planned_start_date)} → ${fmtDate(a.planned_end_date)} · ${a.status || 'Status ?'}</div>
+                <div class="small muted">${a.owner_email || 'No owner'} · ${fmtDate(a.planned_start_date)} → ${fmtDate(a.planned_end_date)} · ${isWorkItemDone(a) ? 'Completed' : (a.status || 'Status ?')}</div>
                 ${progress(a)}
                 ${a.deliverable && html`<div class="small">${a.deliverable}</div>`}
               </div>
@@ -2024,7 +2076,7 @@ function ProjectTimeline(p) {
       ${(byMilestone._none || []).length > 0 && html`<div class="milestone">
         <div class="milestone-head"><b>Activities without milestone</b><span class="small muted">${byMilestone._none.length}</span></div>
         ${(byMilestone._none || []).map(function(a){ return html`<div class="activity-row" key=${a.id || a.smartsheet_id}>
-          <span class=${dot(a)}></span><div><b class="small">${a.name}</b><div class="small muted">${fmtDate(a.planned_end_date)} · ${a.status || 'Status ?'}</div>${progress(a)}</div>
+          <span class=${dot(a)}></span><div><b class="small">${a.name}</b><div class="small muted">${fmtDate(a.planned_end_date)} · ${isWorkItemDone(a) ? 'Completed' : (a.status || 'Status ?')}</div>${progress(a)}</div>
           ${p.canEdit && html`<button class="btn secondary small icon-label no-print" onClick=${function(){p.onEdit(a)}}><${NavIcon} name="edit" /> Edit</button>`}
         </div>`; })}
       </div>`}
@@ -2075,7 +2127,8 @@ function WorkItemModal(p) {
     name: base.name || '',
     parent_milestone_id: base.parent_milestone_id || '',
     status: base.status || 'Not Started',
-    progress_percent: base.progress_percent == null ? 0 : base.progress_percent,
+    progress_percent: base.calculated_progress_percent == null
+      ? (base.progress_percent == null ? 0 : workItemProgress(base)) : base.calculated_progress_percent,
     owner_email: base.owner_email || '',
     planned_start_date: base.planned_start_date || '',
     planned_end_date: base.planned_end_date || '',
@@ -2090,13 +2143,35 @@ function WorkItemModal(p) {
   });
   var f = st[0], bz = useState(false), er = useState(null);
   function set(k,v){ st[1](function(s){ var n=Object.assign({},s); n[k]=v; return n; }); }
+  function setStatus(v) {
+    st[1](function(s){
+      var n = Object.assign({},s,{status:v});
+      if (s.item_type === 'activity' && v === 'Completed') n.progress_percent = 100;
+      return n;
+    });
+  }
+  function setProgress(v) {
+    st[1](function(s){
+      var n = Object.assign({},s,{progress_percent:v});
+      var pct = Math.max(0,Math.min(100,Number(v)||0));
+      if (s.item_type === 'activity' && pct >= 100) n.status = 'Completed';
+      else if (s.item_type === 'activity' && hasCompletedStatus(s) && pct < 100) n.status = 'In Progress';
+      return n;
+    });
+  }
   function save() {
     if (!f.name.trim()) { er[1]('Name is required.'); return; }
     if (f.item_type === 'activity' && !f.parent_milestone_id) { er[1]('Select a parent milestone for this activity.'); return; }
     bz[1](true); er[1](null);
+    var normalizedProgress = Math.max(0,Math.min(100,Number(f.progress_percent)||0));
+    var normalizedStatus = f.status;
+    if (f.item_type === 'activity' && (hasCompletedStatus(f) || normalizedProgress >= 100)) {
+      normalizedProgress = 100;
+      normalizedStatus = 'Completed';
+    }
     var payload = Object.assign({}, f, {
       name:f.name.trim(), parent_milestone_id:f.item_type === 'activity' ? f.parent_milestone_id : null,
-      progress_percent:Math.max(0,Math.min(100,Number(f.progress_percent)||0)),
+      status:normalizedStatus, progress_percent:normalizedProgress,
       sort_order:Number(f.sort_order)||0,
       owner_email:f.owner_email.trim()||null, workstream:f.workstream.trim()||null,
       stage:f.stage.trim()||null, current_stage:f.current_stage.trim()||null,
@@ -2120,8 +2195,10 @@ function WorkItemModal(p) {
       <option value="">Select milestone</option>${p.milestones.map(function(m){return html`<option key=${m.smartsheet_id} value=${m.smartsheet_id}>${m.name}</option>`})}
     </select><//>`}
     <div class="grid cols-2">
-      <${Field} label="Status"><select value=${f.status} onChange=${function(e){set('status',e.target.value)}}>${statusOptions.map(function(s){return html`<option key=${s}>${s}</option>`})}</select><//>
-      <${Field} label="Progress (%)"><input type="number" min="0" max="100" value=${f.progress_percent} onInput=${function(e){set('progress_percent',e.target.value)}} /><//>
+      <${Field} label="Status"><select value=${f.status} onChange=${function(e){setStatus(e.target.value)}}>${statusOptions.map(function(s){return html`<option key=${s}>${s}</option>`})}</select><//>
+      ${f.item_type === 'milestone'
+        ? html`<${Field} label="Progress (%)" hint="calculated from activities"><input type="number" value=${f.progress_percent} disabled /><//>`
+        : html`<${Field} label="Progress (%)"><input type="number" min="0" max="100" value=${f.progress_percent} onInput=${function(e){setProgress(e.target.value)}} /><//>`}
       <${Field} label="Owner email"><input type="email" value=${f.owner_email} onInput=${function(e){set('owner_email',e.target.value)}} /><//>
       <${Field} label="Workstream"><input type="text" value=${f.workstream} onInput=${function(e){set('workstream',e.target.value)}} /><//>
       <${Field} label="Planned start"><input type="date" value=${f.planned_start_date} onInput=${function(e){set('planned_start_date',e.target.value)}} /><//>
@@ -2217,6 +2294,7 @@ function ProjectDetailPage(p) {
   }
   function saveWorkItem(payload) {
     var editing = wi[0] && wi[0].id;
+    var previousParent = editing && wi[0].item_type === 'activity' ? wi[0].parent_milestone_id : null;
     var fields = Object.assign({}, payload, {
       project_id:pr.project_id,
       parent_initiative_id:pr.project_id,
@@ -2227,6 +2305,20 @@ function ProjectDetailPage(p) {
     if (!editing) fields.smartsheet_id = 'DP-' + payload.item_type.slice(0,1).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
     var action = editing ? api.updateProjectWorkItem(wi[0].id, fields) : api.createProjectWorkItem(fields);
     return action.then(function(saved){
+      if (saved.item_type !== 'activity') return saved;
+      var current = (workItems.data || []).filter(function(w){ return w.id !== saved.id; }).concat([saved]);
+      var parentIds = [previousParent, saved.parent_milestone_id].filter(function(id, i, all){ return id && all.indexOf(id) === i; });
+      var parentUpdates = parentIds.map(function(parentId){
+        var milestone = current.find(function(w){ return w.item_type === 'milestone' && w.smartsheet_id === parentId; });
+        if (!milestone || !milestone.id) return Promise.resolve(null);
+        return api.updateProjectWorkItem(milestone.id, {
+          progress_percent:milestoneProgress(milestone, current),
+          status:milestoneStatus(milestone, current),
+          source_origin:'digital_pulse', sync_status:'pending_push', last_modified_by:p.auth.profile.id
+        });
+      });
+      return Promise.all(parentUpdates).then(function(){ return saved; });
+    }).then(function(saved){
       var verb = editing ? 'updated' : 'added';
       return api.addActivity('Project', pr.id, p.auth.profile.id, 'event', 'Delivery item ' + verb + ': ' + saved.name).catch(function(){ return null; }).then(function(){ return saved; });
     }).then(function(saved){ workItems.reload(); activity.reload(); return saved; });
@@ -2276,7 +2368,7 @@ function ProjectDetailPage(p) {
       <div class="delivery-card">
         <div class="small muted">Plan progress</div>
         <div class="num">${delivery.work.pct == null ? '—' : delivery.work.pct + '%'}</div>
-        <div class="small muted">${delivery.work.done}/${delivery.work.total || 0} items done</div>
+        <div class="small muted">${delivery.work.done}/${delivery.work.total || 0} ${delivery.work.unit} done</div>
       </div>
       <div class="delivery-card">
         <div class="small muted">Next milestone</div>
