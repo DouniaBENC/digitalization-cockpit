@@ -165,7 +165,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.1';
+var APP_VERSION = '2026.07.22.2';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -715,11 +715,21 @@ function useAsync(fn, deps) {
   var st = useState({loading:true, data:null, error:null});
   var state = st[0], setState = st[1];
   function reload() {
+    var alive = true;
     setState(function(s){ return {loading:true, data:s.data, error:null}; });
-    fn().then(function(data){ setState({loading:false, data:data, error:null}); })
-      .catch(function(error){ setState({loading:false, data:null, error:error}); });
+    var timer = setTimeout(function(){
+      if (alive) setState({loading:false, data:null, error:new Error('The request timed out. Refresh the page and check that the Supabase migrations are applied.')});
+    }, 12000);
+    Promise.resolve().then(fn).then(function(data){
+      if (!alive) return;
+      alive = false; clearTimeout(timer); setState({loading:false, data:data, error:null});
+    }).catch(function(error){
+      if (!alive) return;
+      alive = false; clearTimeout(timer); setState({loading:false, data:null, error:error});
+    });
+    return function(){ alive = false; clearTimeout(timer); };
   }
-  useEffect(reload, deps || []);
+  useEffect(function(){ return reload(); }, deps || []);
   return { loading:state.loading, data:state.data, error:state.error, reload:reload };
 }
 /* hash router */
