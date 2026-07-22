@@ -69,6 +69,18 @@ table.data tr:hover td{background:#faf9f6}
 .kcard .title{font-weight:600;font-size:13px;margin:2px 0 6px}
 .kcard .meta{display:flex;gap:5px;flex-wrap:wrap}
 .kpi{text-align:center;padding:14px 8px}.kpi .num{font-size:26px;font-weight:700}.kpi .lbl{font-size:12px;color:var(--muted);margin-top:2px}
+.delivery-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.delivery-card{background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px}
+.delivery-card .num{font-size:24px;font-weight:700;line-height:1}
+.timeline{display:grid;gap:10px}
+.milestone{border:1px solid var(--border);border-radius:8px;background:#fff;overflow:hidden}
+.milestone-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:12px;background:#faf9f6;border-bottom:1px solid var(--border)}
+.activity-row{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:9px;align-items:start;padding:10px 12px;border-top:1px solid var(--border)}
+.activity-row:first-child{border-top:none}
+.status-dot{width:10px;height:10px;border-radius:50%;margin-top:5px;background:var(--amber)}
+.status-dot.done{background:var(--green)}
+.status-dot.late{background:var(--red)}
+.update-card{border-left:4px solid var(--border);padding:10px 12px;background:#faf9f6;border-radius:8px;margin-bottom:8px}
 .roadmap-note{background:#f4f2ed;border:1px dashed #c9c3b7;color:#4a473f;border-radius:var(--radius);padding:10px 14px;font-size:12.5px;margin-bottom:14px}
 .progress{background:#eef0f4;border-radius:999px;height:8px;overflow:hidden}
 .progress>div{height:100%;border-radius:999px;transition:width .3s}
@@ -153,7 +165,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.21.13';
+var APP_VERSION = '2026.07.22.1';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -306,6 +318,47 @@ function projectManagerLabel(p) {
   if (p && p.manager) return profileLabel(p.manager);
   return (p && p.project_lead) || 'Unassigned';
 }
+function isWorkItemDone(w) {
+  var s = String(w.status || '').toLowerCase();
+  return ['complete','completed','done','closed','achieved'].some(function(x){ return s.indexOf(x) >= 0; });
+}
+function isProjectClosed(p) {
+  return (p.current_stage||'').indexOf('G5') === 0 || (p.current_stage||'').indexOf('S4') === 0;
+}
+function projectWorkSummary(items) {
+  var all = items || [], milestones = all.filter(function(w){ return w.item_type === 'milestone'; });
+  var activities = all.filter(function(w){ return w.item_type === 'activity'; });
+  var done = all.filter(isWorkItemDone).length;
+  var today = new Date();
+  var overdue = all.filter(function(w){ return !isWorkItemDone(w) && w.planned_end_date && new Date(w.planned_end_date) < today; });
+  var next = milestones.filter(function(w){ return !isWorkItemDone(w) && w.planned_end_date; })
+    .sort(function(a,b){ return new Date(a.planned_end_date) - new Date(b.planned_end_date); })[0] || null;
+  return { total:all.length, milestones:milestones.length, activities:activities.length,
+    done:done, pct:all.length ? Math.round(done / all.length * 100) : null, overdue:overdue, next:next };
+}
+function latestProjectUpdate(updates) {
+  return (updates || []).slice().sort(function(a,b){ return new Date(b.update_week || b.created_at) - new Date(a.update_week || a.created_at); })[0] || null;
+}
+function daysSince(d) {
+  if (!d) return null;
+  return Math.floor((new Date() - new Date(d)) / 86400000);
+}
+function projectDeliveryHealth(p, items, updates, hasInAppCharter) {
+  var reasons = projectAlerts(p, hasInAppCharter).map(function(a){ return a.msg; });
+  var ws = projectWorkSummary(items);
+  var latest = latestProjectUpdate(updates);
+  if (ws.overdue.length) reasons.push(ws.overdue.length + ' overdue milestone/activity item(s)');
+  if (!isProjectClosed(p) && daysSince(latest && (latest.update_week || latest.created_at)) > 7) reasons.push('No weekly update in the last 7 days');
+  if (!latest && !isProjectClosed(p)) reasons.push('No project update submitted yet');
+  if (latest && latest.health_status === 'Red') reasons.push('Last update is Red');
+  var red = ws.overdue.length > 0 || (latest && latest.health_status === 'Red') || reasons.some(function(r){ return r.indexOf('Planned end date passed') >= 0; });
+  var amber = reasons.length > 0 || (latest && latest.health_status === 'Amber');
+  return { status:red ? 'Red' : amber ? 'Amber' : 'Green', reasons:reasons, work:ws, latest:latest };
+}
+function healthBadge(h) {
+  var col = h === 'Green' ? 'green' : h === 'Red' ? 'red' : 'amber';
+  return html`<${Badge} color=${col}>${h}<//>`;
+}
 function roleLabel(role) {
   var r = ROLES.find(function(x){ return x.value === role; });
   return r ? r.label : String(role || '').replace(/_/g, ' ');
@@ -359,6 +412,39 @@ var api = {
   },
   upsertProjects: function(rows){ return sb.from('projects').upsert(rows,{onConflict:'project_id'}).select().then(one); },
   updateProject: function(id,f){ return sb.from('projects').update(f).eq('id',id).select().single().then(one); },
+  listProjectWorkItems: function(projectId){
+    return sb.from('project_work_items').select('*').eq('project_id', projectId).order('planned_start_date',{ascending:true,nullsFirst:false}).then(function(r){
+      var msg = r.error && (r.error.message || '');
+      if (r.error && (msg.indexOf('project_work_items') >= 0 || msg.indexOf('schema cache') >= 0 || msg.indexOf('does not exist') >= 0)) return [];
+      return one(r);
+    });
+  },
+  listAllProjectWorkItems: function(){
+    return sb.from('project_work_items').select('*').order('planned_end_date',{ascending:true,nullsFirst:false}).then(function(r){
+      var msg = r.error && (r.error.message || '');
+      if (r.error && (msg.indexOf('project_work_items') >= 0 || msg.indexOf('schema cache') >= 0 || msg.indexOf('does not exist') >= 0)) return [];
+      return one(r);
+    });
+  },
+  upsertProjectWorkItems: function(rows){
+    if (!rows || !rows.length) return Promise.resolve([]);
+    return sb.from('project_work_items').upsert(rows,{onConflict:'project_id,smartsheet_id'}).select().then(one);
+  },
+  listProjectUpdates: function(projectRef){
+    return sb.from('project_updates').select('*, author:author_id(name,email)').eq('project_ref', projectRef).order('update_week',{ascending:false}).then(function(r){
+      var msg = r.error && (r.error.message || '');
+      if (r.error && (msg.indexOf('project_updates') >= 0 || msg.indexOf('schema cache') >= 0 || msg.indexOf('does not exist') >= 0)) return [];
+      return one(r);
+    });
+  },
+  listAllProjectUpdates: function(){
+    return sb.from('project_updates').select('*, author:author_id(name,email)').order('update_week',{ascending:false}).then(function(r){
+      var msg = r.error && (r.error.message || '');
+      if (r.error && (msg.indexOf('project_updates') >= 0 || msg.indexOf('schema cache') >= 0 || msg.indexOf('does not exist') >= 0)) return [];
+      return one(r);
+    });
+  },
+  createProjectUpdate: function(f){ return sb.from('project_updates').insert(f).select().single().then(one); },
   listChartersLight: function(){ return sb.from('project_charters').select('id, idea_id, charter_id, version, status, smartsheet_project_id').then(one); },
   listMyDocs: function(){ return Promise.all([
     sb.from('business_cases').select('*').then(one),
@@ -383,6 +469,7 @@ var api = {
 /* ================= SmartSheet import/export ================= */
 var SMARTSHEET_COLUMNS = ['Id','Needs attention','Project Category','Project Name','Current Stage','Digital Pillar','Key Benefiting Functions','Project Execution phase','Pillar Sponsor','Project Description','Project Lead','PWR-T IT lead','Integrator/Consultants','Charter Status','Charter file','IT Demand Status','AR Status','AR file','CAPEX k€','Current Y Budget','Cost Center/Internal Order','Planned Start Date','Planned End Date','Linked Initiatives #'];
 var FIELD_MAP = {'Id':'project_id','Needs attention':'needs_attention','Project Category':'project_category','Project Name':'project_name','Current Stage':'current_stage','Digital Pillar':'digital_pillar','Key Benefiting Functions':'key_benefiting_functions','Project Execution phase':'execution_phase','Pillar Sponsor':'pillar_sponsor','Project Description':'project_description','Project Lead':'project_lead','PWR-T IT lead':'pwt_it_lead','Integrator/Consultants':'integrator_consultants','Charter Status':'charter_status','Charter file':'charter_file','IT Demand Status':'it_demand_status','AR Status':'ar_status','AR file':'ar_file','CAPEX k€':'capex_keur','Current Y Budget':'current_year_budget','Cost Center/Internal Order':'cost_center_internal_order','Planned Start Date':'planned_start_date','Planned End Date':'planned_end_date','Linked Initiatives #':'linked_initiative_id'};
+var HIERARCHY_COLUMNS = ['Category','Assigned to (Nexans email)','Initiative, Milestone, Activity Name','Initiative ID','Parent Initiative ID','Parent Milestone ID','PSR ID','Type','Description','Accountability','Workstream','Sub-Workstream','Stage','Status','Planned start date','Planned end date','Deliverable to complete (description)','Capex required?','Current Stage','Digital Pillar','Quick win?','Priority?','Stakeholder'];
 function ssToDate(v) {
   if (v == null || v === '') return null;
   if (v instanceof Date) return v.toISOString().slice(0,10);
@@ -391,34 +478,108 @@ function ssToDate(v) {
   var d2 = new Date(v); return isNaN(d2) ? null : d2.toISOString().slice(0,10);
 }
 function ssToNum(v) { if (v == null || v === '') return null; var n = Number(String(v).replace(',','.')); return isNaN(n) ? null : n; }
+function ssToBool(v) {
+  if (v == null || v === '') return false;
+  var s = String(v).trim().toLowerCase();
+  return ['yes','y','true','1','oui','x'].indexOf(s) >= 0;
+}
+function cleanText(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return ssToDate(v);
+  var s = String(v).trim();
+  return !s || s === 'N/A' ? null : s;
+}
+function parseFlatProjectRows(raw) {
+  var rows = raw.filter(function(r){ return r['Id']; }).map(function(r){
+    var out = {};
+    Object.keys(FIELD_MAP).forEach(function(col){
+      var field = FIELD_MAP[col], v = r[col];
+      if (field === 'planned_start_date' || field === 'planned_end_date') v = ssToDate(v);
+      else if (field === 'capex_keur' || field === 'current_year_budget') v = ssToNum(v);
+      else if (typeof v === 'string') v = v.trim() || null;
+      out[field] = (v === undefined) ? null : v;
+    });
+    return out;
+  });
+  return { projects: rows, workItems: [] };
+}
+function parseHierarchyProjectRows(raw) {
+  var initiatives = raw.filter(function(r){ return cleanText(r['Category']) === 'Initiative' && cleanText(r['Initiative ID']); });
+  var projects = initiatives.map(function(r){
+    var priority = ssToBool(r['Priority?']), quick = ssToBool(r['Quick win?']);
+    return {
+      project_id: cleanText(r['Initiative ID']),
+      project_name: cleanText(r['Initiative, Milestone, Activity Name']) || cleanText(r['Initiative ID']),
+      project_category: cleanText(r['Type']) || 'Initiative',
+      current_stage: cleanText(r['Current Stage']) || cleanText(r['Stage']),
+      digital_pillar: cleanText(r['Digital Pillar']),
+      key_benefiting_functions: cleanText(r['Stakeholder']),
+      execution_phase: cleanText(r['Stage']),
+      pillar_sponsor: cleanText(r['Accountability']),
+      project_description: cleanText(r['Description']),
+      project_lead: cleanText(r['Assigned to (Nexans email)']),
+      planned_start_date: ssToDate(r['Planned start date']),
+      planned_end_date: ssToDate(r['Planned end date']),
+      linked_initiative_id: cleanText(r['PSR ID']),
+      needs_attention: [priority && 'Priority', quick && 'Quick Win'].filter(Boolean).join(', ') || null
+    };
+  });
+  var projectIds = {};
+  projects.forEach(function(p){ projectIds[p.project_id] = true; });
+  var workItems = raw.filter(function(r){ return cleanText(r['Initiative ID']) && projectIds[cleanText(r['Initiative ID'])]; }).map(function(r){
+    var cat = String(cleanText(r['Category']) || '').toLowerCase();
+    var itemType = cat === 'milestone' ? 'milestone' : cat === 'activity' ? 'activity' : 'initiative';
+    var sid = itemType === 'initiative' ? cleanText(r['Initiative ID']) : cleanText(r['Parent Milestone ID']) || cleanText(r['Parent Initiative ID']) || cleanText(r['Initiative ID']);
+    if (itemType !== 'initiative') sid = cleanText(r['Initiative ID']);
+    return {
+      project_id: cleanText(r['Parent Initiative ID']) || cleanText(r['Initiative ID']),
+      smartsheet_id: sid,
+      parent_initiative_id: cleanText(r['Parent Initiative ID']),
+      parent_milestone_id: cleanText(r['Parent Milestone ID']),
+      item_type: itemType,
+      name: cleanText(r['Initiative, Milestone, Activity Name']) || sid,
+      description: cleanText(r['Description']),
+      owner_email: cleanText(r['Assigned to (Nexans email)']),
+      accountability: cleanText(r['Accountability']),
+      workstream: cleanText(r['Workstream']),
+      sub_workstream: cleanText(r['Sub-Workstream']),
+      stage: cleanText(r['Stage']),
+      status: cleanText(r['Status']),
+      current_stage: cleanText(r['Current Stage']),
+      planned_start_date: ssToDate(r['Planned start date']),
+      planned_end_date: ssToDate(r['Planned end date']),
+      deliverable: cleanText(r['Deliverable to complete (description)']),
+      capex_required: cleanText(r['Capex required?']),
+      digital_pillar: cleanText(r['Digital Pillar']),
+      quick_win: ssToBool(r['Quick win?']),
+      priority: ssToBool(r['Priority?']),
+      stakeholder: cleanText(r['Stakeholder'])
+    };
+  });
+  return { projects: projects, workItems: workItems };
+}
 function parseSmartsheetFile(file) {
   return file.arrayBuffer().then(function(buf){
     var wb = XLSX.read(buf, {cellDates:true});
-    var sheet = null;
+    var sheet = null, mode = 'flat';
     for (var k = 0; k < wb.SheetNames.length; k++) {
       var head = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[k]], {header:1, range:0})[0] || [];
-      if (head.indexOf('Id') >= 0 && head.indexOf('Project Name') >= 0) { sheet = wb.Sheets[wb.SheetNames[k]]; break; }
+      if (head.indexOf('Category') >= 0 && head.indexOf('Initiative ID') >= 0 && head.indexOf('Parent Milestone ID') >= 0) { sheet = wb.Sheets[wb.SheetNames[k]]; mode = 'hierarchy'; break; }
+      if (head.indexOf('Id') >= 0 && head.indexOf('Project Name') >= 0) { sheet = wb.Sheets[wb.SheetNames[k]]; mode = 'flat'; break; }
     }
-    if (!sheet) throw new Error('No sheet with SmartSheet columns (Id, Project Name) found');
+    if (!sheet) throw new Error('No supported SmartSheet sheet found. Expected either flat columns (Id, Project Name) or hierarchy columns (Category, Initiative ID, Parent Milestone ID).');
     var raw = XLSX.utils.sheet_to_json(sheet, {defval:null});
     var warnings = [];
     var headers = Object.keys(raw[0] || {});
-    headers.forEach(function(hd){ if (SMARTSHEET_COLUMNS.indexOf(hd) < 0) warnings.push('Unknown column ignored: "' + hd + '"'); });
-    SMARTSHEET_COLUMNS.forEach(function(c){ if (headers.indexOf(c) < 0) warnings.push('Missing column: "' + c + '"'); });
-    var rows = raw.filter(function(r){ return r['Id']; }).map(function(r){
-      var out = {};
-      Object.keys(FIELD_MAP).forEach(function(col){
-        var field = FIELD_MAP[col], v = r[col];
-        if (field === 'planned_start_date' || field === 'planned_end_date') v = ssToDate(v);
-        else if (field === 'capex_keur' || field === 'current_year_budget') v = ssToNum(v);
-        else if (typeof v === 'string') v = v.trim() || null;
-        out[field] = (v === undefined) ? null : v;
-      });
-      return out;
-    });
+    var expected = mode === 'hierarchy' ? HIERARCHY_COLUMNS : SMARTSHEET_COLUMNS;
+    headers.forEach(function(hd){ if (expected.indexOf(hd) < 0) warnings.push('Unknown column ignored: "' + hd + '"'); });
+    expected.forEach(function(c){ if (headers.indexOf(c) < 0) warnings.push('Missing column: "' + c + '"'); });
+    var parsed = mode === 'hierarchy' ? parseHierarchyProjectRows(raw) : parseFlatProjectRows(raw);
+    var rows = parsed.projects, workItems = parsed.workItems;
     var seen = new Set();
     rows.forEach(function(r){ if (seen.has(r.project_id)) warnings.push('Duplicate project Id in file: ' + r.project_id); seen.add(r.project_id); });
-    return { rows: rows, warnings: warnings };
+    workItems.forEach(function(w){ if (!seen.has(w.project_id)) warnings.push('Work item ignored by database unless parent initiative is imported first: ' + w.smartsheet_id); });
+    return { rows: rows, workItems: workItems, warnings: warnings, mode: mode };
   });
 }
 function exportInitiativesToSmartsheet(items, filename) {
@@ -465,6 +626,9 @@ function userErrorMessage(e) {
   var low = msg.toLowerCase();
   if (low.indexOf('status_reason') >= 0 || low.indexOf('has no field') >= 0) {
     return 'This action could not be completed because your browser is running an older version of Digital Pulse. Please refresh with Ctrl+F5, then try again. If it still appears, contact the Digital Transformation team.';
+  }
+  if (low.indexOf('project_work_items') >= 0 || low.indexOf('project_updates') >= 0) {
+    return 'The Project Delivery Workspace database update has not been applied yet. Ask a Program Manager/Admin to run migration 9 in Supabase SQL Editor, then refresh the app.';
   }
   if (low.indexOf('project_manager_id') >= 0 || low.indexOf('schema cache') >= 0) {
     return 'The project assignment database update has not been applied yet. Ask a Program Manager/Admin to run migration 8 in Supabase SQL Editor, then refresh the app.';
@@ -1653,7 +1817,95 @@ function DecisionModal(p) {
     <button class="btn" disabled=${bz[0]||!f.title||!f.related_id} onClick=${save}>Save</button><//>`;
 }
 
-/* ================= Project detail page (read-only + comments) ================= */
+function ProjectTimeline(p) {
+  var items = p.items || [];
+  var milestones = items.filter(function(w){ return w.item_type === 'milestone'; });
+  var activities = items.filter(function(w){ return w.item_type === 'activity'; });
+  var byMilestone = {};
+  activities.forEach(function(a){ var k = a.parent_milestone_id || '_none'; (byMilestone[k] = byMilestone[k] || []).push(a); });
+  function dot(w) {
+    var late = !isWorkItemDone(w) && w.planned_end_date && new Date(w.planned_end_date) < new Date();
+    return 'status-dot ' + (isWorkItemDone(w) ? 'done' : late ? 'late' : '');
+  }
+  if (!items.length) return html`<div class="card">
+    <h2>Delivery plan</h2>
+    <p class="muted small">No milestones or activities imported yet. Import a hierarchy SmartSheet file to activate the Project Manager workspace.</p>
+  </div>`;
+  return html`<div class="card">
+    <h2>Delivery plan</h2>
+    <div class="small muted" style="margin-bottom:10px">${milestones.length} milestone(s) · ${activities.length} activity item(s)</div>
+    <div class="timeline">
+      ${milestones.map(function(m){
+        var acts = byMilestone[m.smartsheet_id] || [];
+        return html`<div class="milestone" key=${m.id || m.smartsheet_id}>
+          <div class="milestone-head">
+            <div>
+              <b>${m.name}</b>
+              <div class="small muted">${fmtDate(m.planned_start_date)} → ${fmtDate(m.planned_end_date)} · ${m.status || 'Status ?'}</div>
+              ${m.deliverable && html`<div class="small" style="margin-top:4px">${m.deliverable}</div>`}
+            </div>
+            <div>${healthBadge(isWorkItemDone(m) ? 'Green' : (m.planned_end_date && new Date(m.planned_end_date) < new Date()) ? 'Red' : 'Amber')}</div>
+          </div>
+          <div>
+            ${acts.map(function(a){ return html`<div class="activity-row" key=${a.id || a.smartsheet_id}>
+              <span class=${dot(a)}></span>
+              <div>
+                <b class="small">${a.name}</b>
+                <div class="small muted">${a.owner_email || 'No owner'} · ${fmtDate(a.planned_start_date)} → ${fmtDate(a.planned_end_date)} · ${a.status || 'Status ?'}</div>
+                ${a.deliverable && html`<div class="small">${a.deliverable}</div>`}
+              </div>
+              <${Badge} color=${isWorkItemDone(a) ? 'green' : (a.planned_end_date && new Date(a.planned_end_date) < new Date()) ? 'red' : 'gray'}>${isWorkItemDone(a) ? 'Done' : 'Open'}<//>
+            </div>`; })}
+            ${!acts.length && html`<div class="activity-row"><span class="status-dot"></span><div class="small muted">No activities attached to this milestone.</div></div>`}
+          </div>
+        </div>`;
+      })}
+      ${(byMilestone._none || []).length > 0 && html`<div class="milestone">
+        <div class="milestone-head"><b>Activities without milestone</b><span class="small muted">${byMilestone._none.length}</span></div>
+        ${(byMilestone._none || []).map(function(a){ return html`<div class="activity-row" key=${a.id || a.smartsheet_id}>
+          <span class=${dot(a)}></span><div><b class="small">${a.name}</b><div class="small muted">${fmtDate(a.planned_end_date)} · ${a.status || 'Status ?'}</div></div>
+        </div>`; })}
+      </div>`}
+    </div>
+  </div>`;
+}
+function ProjectUpdatePanel(p) {
+  var form = p.form[0];
+  return html`<div class="card">
+    <h2>Weekly delivery updates</h2>
+    ${p.canUpdate && html`<div class="no-print" style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px">
+      <div class="grid cols-2">
+        <${Field} label="Health">
+          <select value=${form.health_status} onChange=${function(e){p.setForm('health_status', e.target.value)}}>
+            <option>Green</option><option>Amber</option><option>Red</option>
+          </select><//>
+        <${Field} label="Progress summary" hint="required">
+          <textarea value=${form.progress_summary} onInput=${function(e){p.setForm('progress_summary', e.target.value)}} placeholder="What moved since the last update?"></textarea><//>
+      </div>
+      <div class="grid cols-2">
+        <${Field} label="Blockers / issues"><textarea value=${form.blockers} onInput=${function(e){p.setForm('blockers', e.target.value)}}></textarea><//>
+        <${Field} label="Next actions"><textarea value=${form.next_actions} onInput=${function(e){p.setForm('next_actions', e.target.value)}}></textarea><//>
+      </div>
+      <${Field} label="Support needed from Program Manager / Digital Team"><textarea value=${form.support_needed} onInput=${function(e){p.setForm('support_needed', e.target.value)}}></textarea><//>
+      <button class="btn" onClick=${p.onSubmit} disabled=${p.busy || !form.progress_summary.trim()}>Submit weekly update</button>
+    </div>`}
+    ${(p.updates || []).map(function(u){
+      return html`<div class="update-card" key=${u.id} style="border-left-color:${u.health_status === 'Red' ? 'var(--red)' : u.health_status === 'Amber' ? 'var(--amber)' : 'var(--green)'}">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <b>${fmtDate(u.update_week || u.created_at)}</b>${healthBadge(u.health_status)}
+        </div>
+        <p class="small">${u.progress_summary}</p>
+        ${u.blockers && html`<p class="small"><b>Blockers:</b> ${u.blockers}</p>`}
+        ${u.next_actions && html`<p class="small"><b>Next:</b> ${u.next_actions}</p>`}
+        ${u.support_needed && html`<p class="small"><b>Support needed:</b> ${u.support_needed}</p>`}
+        <div class="small muted">${(u.author && (u.author.name || u.author.email)) || 'Project team'}</div>
+      </div>`;
+    })}
+    ${!(p.updates || []).length && html`<p class="muted small">No weekly update yet.</p>`}
+  </div>`;
+}
+
+/* ================= Project detail page (delivery workspace + comments) ================= */
 function ProjectDetailPage(p) {
   var projects = useAsync(api.listProjects, [p.id]);
   var ideas = useAsync(api.listIdeas, [p.id]);
@@ -1662,6 +1914,15 @@ function ProjectDetailPage(p) {
   var cm = useState(''), na = useState(null), bz = useState(false), er = useState(null);
   var chartersL = useAsync(api.listChartersLight, [p.id]);
   var bcsL = useAsync(function(){ return sb.from('business_cases').select('id, idea_id, business_case_id, version, status, content, recommendation').then(one); }, [p.id]);
+  var workItems = useAsync(function(){
+    var found = (projects.data || []).find(function(x){ return x.id === p.id; });
+    return found ? api.listProjectWorkItems(found.project_id) : Promise.resolve([]);
+  }, [p.id, projects.data && projects.data.length]);
+  var updates = useAsync(function(){
+    var found = (projects.data || []).find(function(x){ return x.id === p.id; });
+    return found ? api.listProjectUpdates(found.id) : Promise.resolve([]);
+  }, [p.id, projects.data && projects.data.length]);
+  var uf = useState({ health_status:'Green', progress_summary:'', blockers:'', next_actions:'', support_needed:'' });
   if (projects.loading) return html`<p>Loading…</p>`;
   var pr = (projects.data || []).find(function(x){ return x.id === p.id; });
   if (!pr) return html`<p class="muted">Project not found. <${A} href="/projects">← Back to projects<//></p>`;
@@ -1673,6 +1934,8 @@ function ProjectDetailPage(p) {
   var prDecisions = (decisions.data || []).filter(function(d){ return d.related_type === 'Project' && d.related_id === pr.project_id; });
   var isPMTT = p.auth.isPMTT;
   var naVal = na[0] === null ? (pr.needs_attention || '') : na[0];
+  var delivery = projectDeliveryHealth(pr, workItems.data || [], updates.data || [], !!prCharter);
+  var canUpdate = isPMTT || p.auth.profile.role === 'project_lead';
 
   function postComment() {
     if (!cm[0].trim()) return;
@@ -1706,7 +1969,29 @@ function ProjectDetailPage(p) {
       </div>
       <button class="btn secondary no-print" onClick=${function(){window.print()}}>🖨 Print</button>
     </div>
-    <p class="muted small">SmartSheet is the source of truth — fields below are read-only and updated via import.</p>
+    <p class="muted small">SmartSheet is the source planning baseline. Digital Pulse is the delivery workspace for updates, alerts, decisions and governance follow-up.</p>
+    <div class="delivery-strip">
+      <div class="delivery-card">
+        <div class="small muted">Delivery health</div>
+        <div style="margin-top:6px">${healthBadge(delivery.status)}</div>
+        ${delivery.reasons[0] && html`<div class="small muted" style="margin-top:6px">${delivery.reasons[0]}</div>`}
+      </div>
+      <div class="delivery-card">
+        <div class="small muted">Plan progress</div>
+        <div class="num">${delivery.work.pct == null ? '—' : delivery.work.pct + '%'}</div>
+        <div class="small muted">${delivery.work.done}/${delivery.work.total || 0} items done</div>
+      </div>
+      <div class="delivery-card">
+        <div class="small muted">Next milestone</div>
+        <b>${delivery.work.next ? delivery.work.next.name : 'No milestone loaded'}</b>
+        <div class="small muted">${delivery.work.next ? fmtDate(delivery.work.next.planned_end_date) : 'Import a hierarchy SmartSheet file'}</div>
+      </div>
+      <div class="delivery-card">
+        <div class="small muted">Latest update</div>
+        <b>${delivery.latest ? fmtDate(delivery.latest.update_week || delivery.latest.created_at) : 'No update yet'}</b>
+        <div class="small muted">${delivery.latest ? delivery.latest.health_status + ' · ' + ((delivery.latest.author && delivery.latest.author.name) || 'Project team') : 'Project Manager should submit weekly'}</div>
+      </div>
+    </div>
     <div class="grid cols-2">
       <div>
         <div class="card">
@@ -1719,6 +2004,7 @@ function ProjectDetailPage(p) {
             <${Badge} color=${a.type === 'budget' ? 'red' : a.type === 'planning' ? 'amber' : 'gray'}>${a.type}<//>
             <span>${a.msg}</span></div>`; })}
         </div>`}
+        <${ProjectTimeline} items=${workItems.data || []} />
         <div class="card">
           <h2>Project data</h2>
           <table class="data"><tbody>
@@ -1769,6 +2055,7 @@ function ProjectDetailPage(p) {
             ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
           </div>`}
         </div>
+        <${ProjectUpdatePanel} updates=${updates.data || []} canUpdate=${canUpdate} form=${uf} setForm=${setU} onSubmit=${submitUpdate} busy=${bz[0]} />
         <div class="card">
           <h2>Comments & activity</h2>
           <div style="display:flex;gap:8px;margin-bottom:10px" class="no-print">
@@ -1794,9 +2081,11 @@ function StatusB(p) {
   var c = p.v==='Approved'?'green':p.v==='N/A'?'gray':p.v==='Not created'?'red':'amber';
   return html`<${Badge} color=${c}>${p.v}<//>`;
 }
-function ProjectsPage() {
+function ProjectsPage(p) {
   var projects = useAsync(api.listProjects, []);
   var chartersL = useAsync(api.listChartersLight, []);
+  var workItems = useAsync(api.listAllProjectWorkItems, []);
+  var updates = useAsync(api.listAllProjectUpdates, []);
   var fl = useState({stage:'',pillar:'',flag:'',q:''});
   var flt = fl[0]; function setF(k,v){ fl[1](function(s){ var n=Object.assign({},s); n[k]=v; return n; }); }
   var selS = useState(null), selected = selS[0];
@@ -1810,9 +2099,22 @@ function ProjectsPage() {
   }, [projects.data, flt]);
   if (projects.loading) return html`<p>Loading…</p>`;
   var chMap = charterMap(chartersL.data);
+  function itemsFor(pr){ return (workItems.data || []).filter(function(w){ return w.project_id === pr.project_id; }); }
+  function updatesFor(pr){ return (updates.data || []).filter(function(u){ return u.project_ref === pr.id; }); }
+  var enriched = list.map(function(pr){ return { p:pr, h:projectDeliveryHealth(pr, itemsFor(pr), updatesFor(pr), !!chMap[pr.project_id]) }; });
+  var red = enriched.filter(function(x){ return x.h.status === 'Red'; }).length;
+  var amber = enriched.filter(function(x){ return x.h.status === 'Amber'; }).length;
+  var missingUpdate = enriched.filter(function(x){ return !x.h.latest && !isProjectClosed(x.p); }).length;
+  var overdue = enriched.reduce(function(sum,x){ return sum + x.h.work.overdue.length; }, 0);
   return html`<div>
     <div class="topbar"><div><h1>Projects</h1>
-      <p class="muted small mb0">Mirror of SmartSheet (official source of truth). Read-only here — update via import, push changes via export.</p></div></div>
+      <p class="muted small mb0">${p.auth.profile.role === 'project_lead' ? 'My delivery workspace — assigned projects, updates, risks and next milestones.' : 'Portfolio delivery command center — project health, updates, governance and SmartSheet baseline.'}</p></div></div>
+    <div class="delivery-strip">
+      <div class="delivery-card"><div class="small muted">Visible projects</div><div class="num">${list.length}</div><div class="small muted">${p.auth.profile.role === 'project_lead' ? 'assigned to you' : 'portfolio scope'}</div></div>
+      <div class="delivery-card"><div class="small muted">Red / Amber</div><div class="num" style="color:${red ? 'var(--red)' : 'var(--text)'}">${red} / ${amber}</div><div class="small muted">delivery health</div></div>
+      <div class="delivery-card"><div class="small muted">Overdue items</div><div class="num" style="color:${overdue ? 'var(--red)' : 'var(--text)'}">${overdue}</div><div class="small muted">milestones + activities</div></div>
+      <div class="delivery-card"><div class="small muted">Missing updates</div><div class="num" style="color:${missingUpdate ? 'var(--amber)' : 'var(--text)'}">${missingUpdate}</div><div class="small muted">weekly follow-up</div></div>
+    </div>
     <div class="filters">
       <input placeholder="Search…" value=${flt.q} onInput=${function(e){setF('q',e.target.value)}} />
       <select value=${flt.stage} onChange=${function(e){setF('stage',e.target.value)}}><option value="">All stages</option>${PROJECT_STAGES.map(function(s){return html`<option key=${s}>${s}</option>`})}</select>
@@ -1822,22 +2124,24 @@ function ProjectsPage() {
         <option value="quick_win">Quick win</option><option value="alerts">With alerts</option></select>
     </div>
     <div class="card" style="overflow-x:auto"><table class="data">
-      <thead><tr><th>ID</th><th>Name</th><th>Stage</th><th>Pillar</th><th>Lead</th><th>Sponsor</th><th>Charter</th><th>IT Demand</th><th>AR</th><th>CAPEX k€</th><th>Budget</th><th>Start</th><th>End</th><th>Initiative</th><th>Alerts</th></tr></thead>
-      <tbody>${list.map(function(p){
-        var alerts = projectAlerts(p, !!chMap[p.project_id]);
-        return html`<tr key=${p.id} onClick=${function(){nav('/projects/'+p.id)}} style="cursor:pointer">
-          <td>${p.project_id}</td>
-          <td>${p.project_name}${isPriorityProject(p)&&html` <${Badge} color="red">P<//>`}${isQuickWinProject(p)&&html` <${Badge} color="green">QW<//>`}</td>
-          <td class="small">${p.current_stage||'—'}</td><td class="small">${p.digital_pillar||'—'}</td>
-          <td class="small">${projectManagerLabel(p)}</td><td class="small">${p.pillar_sponsor||'—'}</td>
-          <td>${(!p.charter_status || p.charter_status === 'Not created') && chMap[p.project_id]
-            ? html`<${Badge} color="blue">In app ${chMap[p.project_id].version}<//>`
-            : html`<${StatusB} v=${p.charter_status} />`}</td><td><${StatusB} v=${p.it_demand_status} /></td><td><${StatusB} v=${p.ar_status} /></td>
-          <td>${p.capex_keur != null ? p.capex_keur : '—'}</td><td>${p.current_year_budget != null ? p.current_year_budget : '—'}</td>
-          <td class="small">${fmtDate(p.planned_start_date)}</td><td class="small">${fmtDate(p.planned_end_date)}</td>
-          <td class="small">${p.linked_initiative_id||'—'}</td>
+      <thead><tr><th>ID</th><th>Name</th><th>Health</th><th>Progress</th><th>Next milestone</th><th>Latest update</th><th>Stage</th><th>Pillar</th><th>Lead</th><th>Governance</th><th>End</th><th>Alerts</th></tr></thead>
+      <tbody>${enriched.map(function(x){
+        var pr = x.p, h = x.h, alerts = projectAlerts(pr, !!chMap[pr.project_id]);
+        return html`<tr key=${pr.id} onClick=${function(){nav('/projects/'+pr.id)}} style="cursor:pointer">
+          <td>${pr.project_id}</td>
+          <td>${pr.project_name}${isPriorityProject(pr)&&html` <${Badge} color="red">P<//>`}${isQuickWinProject(pr)&&html` <${Badge} color="green">QW<//>`}</td>
+          <td>${healthBadge(h.status)}</td>
+          <td class="small">${h.work.pct == null ? '—' : h.work.pct + '%'}${h.work.total ? ' · ' + h.work.done + '/' + h.work.total : ''}</td>
+          <td class="small">${h.work.next ? html`${h.work.next.name}<br /><span class="muted">${fmtDate(h.work.next.planned_end_date)}</span>` : '—'}</td>
+          <td class="small">${h.latest ? html`${fmtDate(h.latest.update_week || h.latest.created_at)}<br /><span class="muted">${h.latest.health_status}</span>` : html`<${Badge} color="amber">Missing<//>`}</td>
+          <td class="small">${pr.current_stage||'—'}</td><td class="small">${pr.digital_pillar||'—'}</td>
+          <td class="small">${projectManagerLabel(pr)}</td>
+          <td class="small">${(!pr.charter_status || pr.charter_status === 'Not created') && chMap[pr.project_id]
+            ? html`<${Badge} color="blue">Charter in app<//>`
+            : html`<${StatusB} v=${pr.charter_status} />`}</td>
+          <td class="small">${fmtDate(pr.planned_end_date)}</td>
           <td>${alerts.length > 0 && html`<${Badge} color="red">${alerts.length} ⚠<//>`}</td></tr>`; })}
-      ${!list.length && html`<tr><td colSpan="15" class="muted">No projects. Import a SmartSheet export from the SmartSheet I/O screen.</td></tr>`}
+      ${!list.length && html`<tr><td colSpan="12" class="muted">No projects. Import a SmartSheet export from the SmartSheet I/O screen.</td></tr>`}
       </tbody></table></div>
     ${selected && html`<${ProjectPanel} p=${selected} onClose=${function(){selS[1](null)}} />`}
   </div>`;
@@ -1874,7 +2178,7 @@ function ImportExportPage() {
     parseSmartsheetFile(file).then(function(res){
       return api.existingProjectIds().then(function(existing){
         var dupes = res.rows.filter(function(r){return existing.has(r.project_id)}).map(function(r){return r.project_id});
-        pv[1]({ rows:res.rows, warnings:res.warnings, dupes:dupes, fileName:file.name });
+        pv[1]({ rows:res.rows, workItems:res.workItems || [], warnings:res.warnings, dupes:dupes, fileName:file.name, mode:res.mode });
       });
     }).catch(function(ex){ er[1](ex.message); }).finally(function(){ bz[1](false); e.target.value = ''; });
   }
@@ -1882,10 +2186,14 @@ function ImportExportPage() {
     bz[1](true); er[1](null);
     var stamped = preview.rows.map(function(r){
       return Object.assign({}, r, { source_file:preview.fileName, imported_at:new Date().toISOString() }); });
+    var itemStamp = (preview.workItems || []).map(function(r){
+      return Object.assign({}, r, { source_file:preview.fileName, imported_at:new Date().toISOString() }); });
     api.upsertProjects(stamped).then(function(){
-      dn[1]('Imported '+stamped.length+' projects from '+preview.fileName+' ('+preview.dupes.length+' updated, '+(stamped.length-preview.dupes.length)+' new).');
+      return api.upsertProjectWorkItems(itemStamp);
+    }).then(function(){
+      dn[1]('Imported '+stamped.length+' projects and '+itemStamp.length+' delivery items from '+preview.fileName+' ('+preview.dupes.length+' updated, '+(stamped.length-preview.dupes.length)+' new).');
       pv[1](null); projects.reload();
-    }).catch(function(ex){ er[1](ex.message); }).finally(function(){ bz[1](false); });
+    }).catch(function(ex){ er[1](userErrorMessage(ex)); }).finally(function(){ bz[1](false); });
   }
   var converted = (ideas.data||[]).filter(function(i){return i.stage==='Converted'});
   function exportConverted() {
@@ -1917,7 +2225,8 @@ function ImportExportPage() {
       ${lastImport && html`<p class="small muted">Last import: ${fmtDateTime(lastImport.imported_at)} — ${lastImport.source_file}</p>`}
       <input type="file" accept=".xlsx,.csv" onChange=${onFile} disabled=${bz[0]} />
       ${preview && html`<div style="margin-top:14px">
-        <p><b>${preview.rows.length}</b> projects found in <b>${preview.fileName}</b>.</p>
+        <p><b>${preview.rows.length}</b> projects found in <b>${preview.fileName}</b>.
+          ${preview.mode === 'hierarchy' && html`<br /><span class="small muted">${preview.workItems.length} milestones / activities will be attached to the project workspace.</span>`}</p>
         ${preview.dupes.length > 0 && html`<p class="small" style="color:var(--amber)">⚠ ${preview.dupes.length} existing project IDs will be updated: ${preview.dupes.join(', ')}</p>`}
         ${preview.warnings.map(function(w,i){return html`<p key=${i} class="small" style="color:var(--amber)">⚠ ${w}</p>`})}
         <div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
@@ -2159,6 +2468,8 @@ function CockpitPage() {
   var ideas = useAsync(api.listIdeas, []);
   var chartersL = useAsync(api.listChartersLight, []);
   var projects = useAsync(api.listProjects, []);
+  var workItems = useAsync(api.listAllProjectWorkItems, []);
+  var updates = useAsync(api.listAllProjectUpdates, []);
   var decisions = useAsync(api.listDecisions, []);
   if (ideas.loading || projects.loading || decisions.loading) return html`<p>Loading…</p>`;
   var I = ideas.data||[], P = projects.data||[], D = decisions.data||[];
@@ -2188,6 +2499,12 @@ function CockpitPage() {
     ['Converted', I.filter(function(i){return i.stage==='Converted'}).length]];
   var activeP = P.filter(function(p){return (p.current_stage||'').indexOf('G5') !== 0});
   var completed = P.filter(function(p){return (p.current_stage||'').indexOf('G5') === 0});
+  function cItemsFor(pr){ return (workItems.data || []).filter(function(w){ return w.project_id === pr.project_id; }); }
+  function cUpdatesFor(pr){ return (updates.data || []).filter(function(u){ return u.project_ref === pr.id; }); }
+  var deliveryRows = activeP.map(function(pr){ return { p:pr, h:projectDeliveryHealth(pr, cItemsFor(pr), cUpdatesFor(pr), !!chMap[pr.project_id]) }; });
+  var redProjects = deliveryRows.filter(function(x){ return x.h.status === 'Red'; });
+  var missingUpdates = deliveryRows.filter(function(x){ return !x.h.latest; });
+  var overdueDeliveryItems = deliveryRows.reduce(function(sum,x){ return sum + x.h.work.overdue.length; }, 0);
   var withAlerts = P.map(function(p){return {p:p, alerts:projectAlerts(p, !!chMap[p.project_id])}}).filter(function(x){return x.alerts.length});
   var budgetAlerts = withAlerts.filter(function(x){return x.alerts.some(function(a){return a.type==='budget'})});
   var planningAlerts = withAlerts.filter(function(x){return x.alerts.some(function(a){return a.type==='planning'})});
@@ -2249,6 +2566,12 @@ function CockpitPage() {
       <div class="card kpi"><div class="num">${activeP.length}</div><div class="lbl">Active projects</div></div>
       <div class="card kpi"><div class="num" style="color:var(--green)">${completed.length}</div><div class="lbl">Closed projects</div></div>
     </div>
+    <div class="delivery-strip">
+      <div class="delivery-card"><div class="small muted">Red projects</div><div class="num" style="color:${redProjects.length ? 'var(--red)' : 'var(--text)'}">${redProjects.length}</div><div class="small muted">delivery health</div></div>
+      <div class="delivery-card"><div class="small muted">Missing updates</div><div class="num" style="color:${missingUpdates.length ? 'var(--amber)' : 'var(--text)'}">${missingUpdates.length}</div><div class="small muted">weekly project follow-up</div></div>
+      <div class="delivery-card"><div class="small muted">Overdue delivery items</div><div class="num" style="color:${overdueDeliveryItems ? 'var(--red)' : 'var(--text)'}">${overdueDeliveryItems}</div><div class="small muted">milestones + activities</div></div>
+      <div class="delivery-card"><div class="small muted">Projects with alerts</div><div class="num">${withAlerts.length}</div><div class="small muted">planning / budget / governance</div></div>
+    </div>
     <div class="grid cols-2">
       <div class="card">
         <h2>🚨 Escalations</h2>
@@ -2260,6 +2583,17 @@ function CockpitPage() {
         ${highlights.length ? highlights.map(function(hl,i){return html`<div key=${i} class="alert-line"><span>${hl}</span></div>`})
           : html`<p class="muted">Nothing yet — they will appear as decisions are taken and initiatives convert.</p>`}
       </div>
+    </div>
+    <div class="card">
+      <h2>Project follow-up</h2>
+      ${deliveryRows.filter(function(x){ return x.h.status === 'Red' || !x.h.latest || x.h.work.overdue.length; }).slice(0,8).map(function(x){
+        return html`<div key=${x.p.id} class="alert-line">
+          ${healthBadge(x.h.status)}
+          <span><${A} href=${'/projects/'+x.p.id}>${x.p.project_id} ${x.p.project_name}<//></span>
+          <span class="muted small">${x.h.reasons[0] || (!x.h.latest ? 'No weekly update yet' : 'Needs review')}</span>
+        </div>`;
+      })}
+      ${!deliveryRows.some(function(x){ return x.h.status === 'Red' || !x.h.latest || x.h.work.overdue.length; }) && html`<p class="muted small">No red project, missing update, or overdue delivery item in the current filter.</p>`}
     </div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
@@ -2413,6 +2747,9 @@ function NotificationsPage(p) {
 function AdminPage(p) {
   var profiles = useAsync(api.listProfiles, []);
   var projects = useAsync(api.listProjects, []);
+  var chartersL = useAsync(api.listChartersLight, []);
+  var workItems = useAsync(api.listAllProjectWorkItems, []);
+  var updates = useAsync(api.listAllProjectUpdates, []);
   var refs = useAsync(api.listReference, []);
   var settings = useAsync(api.getSettings, []);
   var er = useState(null), bz = useState(false);
@@ -2421,8 +2758,11 @@ function AdminPage(p) {
   if (profiles.loading || projects.loading || refs.loading) return html`<p>Loading…</p>`;
   var R = refs.data || [];
   var people = profiles.data || [];
+  var adminChMap = charterMap(chartersL.data);
   var projectManagers = people.filter(function(pr){ return pr.active && pr.role === 'project_lead'; });
   var digitalTeam = people.filter(function(pr){ return pr.active && pr.role === 'transformation_team'; });
+  function adminItemsFor(project){ return (workItems.data || []).filter(function(w){ return w.project_id === project.project_id; }); }
+  function adminUpdatesFor(project){ return (updates.data || []).filter(function(u){ return u.project_ref === project.id; }); }
   function sVal(key, fallback) {
     var row = (settings.data || []).find(function(s){ return s.key === key; });
     return row ? Number(row.value) : fallback;
@@ -2548,11 +2888,15 @@ function AdminPage(p) {
       <h2>Project assignments</h2>
       <p class="muted small" style="margin-top:0">Assign each project to an app Project Manager. The SmartSheet Project Lead text remains visible as imported data.</p>
       <div style="overflow-x:auto"><table class="data">
-        <thead><tr><th>Project</th><th>Pillar</th><th>SmartSheet Lead</th><th>Assigned Project Manager</th></tr></thead>
+        <thead><tr><th>Project</th><th>Pillar</th><th>Health</th><th>Last update</th><th>Next milestone</th><th>SmartSheet Lead</th><th>Assigned Project Manager</th></tr></thead>
         <tbody>${(projects.data||[]).map(function(project){
+          var h = projectDeliveryHealth(project, adminItemsFor(project), adminUpdatesFor(project), !!adminChMap[project.project_id]);
           return html`<tr key=${project.id}>
             <td><${A} href=${'/projects/'+project.id}>${project.project_id} ${project.project_name}<//></td>
             <td class="small">${project.digital_pillar || 'Unassigned'}</td>
+            <td>${healthBadge(h.status)}</td>
+            <td class="small">${h.latest ? fmtDate(h.latest.update_week || h.latest.created_at) : html`<${Badge} color="amber">Missing<//>`}</td>
+            <td class="small">${h.work.next ? html`${h.work.next.name}<br /><span class="muted">${fmtDate(h.work.next.planned_end_date)}</span>` : '—'}</td>
             <td class="small">${project.project_lead || '—'}</td>
             <td>
               <select value=${project.project_manager_id || ''} onChange=${function(e){ assignProject(project, e.target.value); }} disabled=${bz[0] || !projectManagers.length}
@@ -2563,7 +2907,7 @@ function AdminPage(p) {
             </td>
           </tr>`;
         })}
-        ${!(projects.data||[]).length && html`<tr><td colSpan="4" class="muted">No projects yet. Import projects from SmartSheet I/O first.</td></tr>`}
+        ${!(projects.data||[]).length && html`<tr><td colSpan="7" class="muted">No projects yet. Import projects from SmartSheet I/O first.</td></tr>`}
         </tbody></table></div>
     </div>
     <div class="card">
@@ -2661,7 +3005,7 @@ function App() {
   else if (route === '/decisions') page = html`<${DecisionLog} auth=${auth} />`;
   else if (route === '/reviews') page = html`<${ReviewsPage} />`;
   else if ((m = route.match(/^\/projects\/([^/]+)$/))) page = html`<${ProjectDetailPage} id=${m[1]} auth=${auth} />`;
-  else if (route === '/projects') page = html`<${ProjectsPage} />`;
+  else if (route === '/projects') page = html`<${ProjectsPage} auth=${auth} />`;
   else if (route === '/import-export') page = html`<${ImportExportPage} />`;
   else if (route === '/notifications') page = html`<${NotificationsPage} refreshUnread=${refreshUnread} />`;
   else if (route === '/admin') page = html`<${AdminPage} onRefChange=${loadReference} />`;
