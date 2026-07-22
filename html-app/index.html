@@ -188,7 +188,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.10';
+var APP_VERSION = '2026.07.22.11';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -219,7 +219,7 @@ function applyReference(rows, settings) {
     if (s.key === 'triage_sla_days') TRIAGE_SLA_DAYS = Number(s.value) || 7;
   });
 }
-var ROADMAP_NOTE = 'AI-guided intake and draft generation are planned for a future release. In the MVP, Business Case v0 and Project Charter v0 are generated from structured fields and enriched manually by the Program Manager / Digital Team.';
+var ROADMAP_NOTE = 'AI-guided intake and draft generation are planned for a future release. The current workflow generates Business Case v0 and Project Charter v0 from structured fields for enrichment by the Program Manager / Digital Team.';
 var BC_SECTIONS = [
   { key:'problem_statement', label:'2. Problem / Opportunity', hint:'What problem are we solving? Who is impacted? Why now?', required:true },
   { key:'proposed_solution', label:'3. Proposed Concept', hint:'Proposed digitalization / AI solution, operating model change', required:true },
@@ -236,7 +236,7 @@ var CH_SECTIONS = [
   { key:'objectives', label:'2. Objectives', hint:'Main objective, expected outcomes', required:true },
   { key:'scope_in', label:'3. Scope In', hint:'In scope, target users / processes', required:true },
   { key:'scope_out', label:'3b. Scope Out', hint:'Explicitly out of scope', required:true },
-  { key:'deliverables', label:'4. Deliverables', hint:'MVP / first deliverable, business, technical, change deliverables', required:true },
+  { key:'deliverables', label:'4. Deliverables', hint:'First release or deliverable, business, technical and change deliverables', required:true },
   { key:'high_level_timeline', label:'6. Timeline', hint:'Indicative start / end, key milestones', required:true },
   { key:'stakeholders', label:'7. Roles & Stakeholders', hint:'Sponsor, business owner, leads, key stakeholders', required:false },
   { key:'dependencies', label:'8. Dependencies', hint:'Data, systems, resources, other projects', required:true },
@@ -373,10 +373,13 @@ function resolveRequiredDeliverables(idea, project, bc, charter) {
       key:kind, short:isBC ? 'BC' : 'PC', title:isBC ? 'Business Case' : 'Project Charter',
       status:status, source:internalExists ? 'Digital Pulse' : externalExists ? 'Smartsheet' : '—',
       sourceDetail:internalExists && externalExists ? 'Digital Pulse + Smartsheet' : internalExists ? 'Digital Pulse' : externalExists ? 'Smartsheet' : '—',
-      version:internalExists ? doc.version : null, reference:ref, updatedAt:internalExists ? doc.updated_at : project && project.imported_at,
+      version:internalExists ? doc.version : null, reference:ref, updatedAt:internalExists ? doc.updated_at : externalExists && project ? project.imported_at : null,
       pct:comp ? comp.pct : null, ready:ready, requiredNow:requiredNow, missing:requiredNow && !exists,
       conflict:conflict, syncNeeded:syncNeeded, externalStatus:externalStatus || null,
-      url:idea && internalExists ? '/ideas/' + idea.id + (isBC ? '/business-case' : '/charter') : null,
+      url:internalExists
+        ? project ? '/projects/' + project.id + (isBC ? '/business-case' : '/charter')
+          : idea ? '/ideas/' + idea.id + (isBC ? '/business-case' : '/charter') : null
+        : null,
       externalFile:!isBC && project && project.charter_file ? project.charter_file : null,
       owner:'Digital Transformation Team'
     };
@@ -390,9 +393,11 @@ function ideaDeliverables(idea, docs) {
 function projectDeliverables(project, ideas, docs) {
   docs = docs || {};
   var idea = linkedIdeaForProject(project, ideas);
-  var charter = (docs.charters || []).find(function(ch){ return ch.smartsheet_project_id === project.project_id; })
+  var charter = (docs.charters || []).find(function(ch){ return ch.project_ref === project.id; })
+    || (docs.charters || []).find(function(ch){ return ch.smartsheet_project_id === project.project_id; })
     || (idea && latestIdeaDoc(docs.charters, idea.id)) || null;
-  var bc = idea ? latestIdeaDoc(docs.bcs, idea.id) : null;
+  var bc = (docs.bcs || []).find(function(row){ return row.project_ref === project.id; })
+    || (idea ? latestIdeaDoc(docs.bcs, idea.id) : null);
   return resolveRequiredDeliverables(idea, project, bc, charter);
 }
 function projectDeliverableMap(projects, ideas, docs) {
@@ -419,6 +424,7 @@ function projectAlerts(p, deliverables) {
   else if (!deliverables && (!p.charter_status || p.charter_status === 'Not created')) a.push({type:'governance',msg:'Project Charter missing'});
   if (p.it_demand_status === 'Not created') a.push({type:'governance',msg:'IT demand not created'});
   if (p.ar_status === 'Not created') a.push({type:'governance',msg:'AR not created'});
+  if (p.description_sync_status === 'conflict') a.push({type:'sync',msg:'Project description differs between Digital Pulse and Smartsheet'});
   var na = (p.needs_attention||'').toLowerCase();
   if (na.indexOf('budget') >= 0) a.push({type:'budget',msg:'Flagged: budget attention'});
   if (na.indexOf('planning') >= 0) a.push({type:'planning',msg:'Flagged: planning attention'});
@@ -552,8 +558,12 @@ var api = {
   qualifyIdea: function(id){ return sb.rpc('qualify_idea',{p_idea:id}).then(one); },
   convertToProject: function(id,pid,lead){ return sb.rpc('convert_to_project',{p_idea:id,p_project_id:pid,p_project_lead:lead}).then(one); },
   getBCByIdea: function(id){ return sb.from('business_cases').select('*').eq('idea_id',id).order('created_at',{ascending:false}).limit(1).then(one).then(function(r){return r[0]||null}); },
+  getBCByProject: function(id){ return sb.from('business_cases').select('*').eq('project_ref',id).order('created_at',{ascending:false}).limit(1).then(one).then(function(r){return r[0]||null}); },
+  createBC: function(f){ return sb.from('business_cases').insert(f).select().single().then(one); },
   updateBC: function(id,f){ return sb.from('business_cases').update(f).eq('id',id).select().single().then(one); },
   getCharterByIdea: function(id){ return sb.from('project_charters').select('*').eq('idea_id',id).order('created_at',{ascending:false}).limit(1).then(one).then(function(r){return r[0]||null}); },
+  getCharterByProject: function(id){ return sb.from('project_charters').select('*').eq('project_ref',id).order('created_at',{ascending:false}).limit(1).then(one).then(function(r){return r[0]||null}); },
+  createCharter: function(f){ return sb.from('project_charters').insert(f).select().single().then(one); },
   updateCharter: function(id,f){ return sb.from('project_charters').update(f).eq('id',id).select().single().then(one); },
   saveVersion: function(t,id,label,snap,uid){ return sb.from('document_versions').insert({doc_type:t,doc_id:id,version_label:label,snapshot:snap,saved_by:uid}).select().then(one); },
   listVersions: function(t,id){ return sb.from('document_versions').select('*, saver:saved_by(name)').eq('doc_type',t).eq('doc_id',id).order('created_at',{ascending:false}).then(one); },
@@ -598,6 +608,7 @@ var api = {
   },
   upsertProjects: function(rows){ return sb.from('projects').upsert(rows,{onConflict:'project_id'}).select().then(one); },
   updateProject: function(id,f){ return sb.from('projects').update(f).eq('id',id).select().single().then(one); },
+  updateProjectDescription: function(id,description){ return sb.rpc('update_project_description',{p_project:id,p_description:description}).then(one); },
   listProjectWorkItems: function(projectId){
     return withTimeout(sb.from('project_work_items').select('*').eq('project_id', projectId).order('sort_order',{ascending:true}).order('planned_start_date',{ascending:true,nullsFirst:false}), 5000, {data:[], error:null}).then(function(r){
       var msg = r.error && (r.error.message || '');
@@ -704,6 +715,36 @@ function parseFlatProjectRows(raw) {
     return out;
   });
   return { projects: rows, workItems: [] };
+}
+function reconcileImportedProjectDescription(existing, incoming) {
+  var next = Object.assign({}, incoming), snapshot = null, conflict = false;
+  if (!existing) {
+    next.description_version = 1;
+    next.description_sync_status = 'synced';
+    return { row:next, snapshot:null, conflict:false };
+  }
+  var localDescription = existing.project_description || '';
+  var incomingDescription = incoming.project_description || '';
+  var localPending = ['pending_push','conflict'].indexOf(existing.description_sync_status) >= 0;
+  next.description_version = existing.description_version || 1;
+  next.description_updated_by = existing.description_updated_by || null;
+  if (localPending && localDescription !== incomingDescription) {
+    next.project_description = existing.project_description;
+    next.description_sync_status = 'conflict';
+    conflict = true;
+  } else if (localDescription === incomingDescription) {
+    next.description_sync_status = 'synced';
+  } else {
+    snapshot = {
+      project_description:existing.project_description,
+      description_sync_status:existing.description_sync_status || 'synced',
+      updated_at:existing.updated_at
+    };
+    next.description_version = (existing.description_version || 1) + 1;
+    next.description_sync_status = 'synced';
+    next.description_updated_by = null;
+  }
+  return { row:next, snapshot:snapshot, conflict:conflict };
 }
 function parseHierarchyProjectRows(raw) {
   var initiatives = raw.filter(function(r){ return cleanText(r['Category']) === 'Initiative' && cleanText(r['Initiative ID']); });
@@ -897,6 +938,9 @@ function userErrorMessage(e) {
   if (low.indexOf('status_reason') >= 0 || low.indexOf('has no field') >= 0) {
     return 'This action could not be completed because your browser is running an older version of Digital Pulse. Please refresh with Ctrl+F5, then try again. If it still appears, contact the Digital Transformation team.';
   }
+  if (low.indexOf('project_ref') >= 0 || low.indexOf('description_version') >= 0 || low.indexOf('description_sync_status') >= 0 || low.indexOf('update_project_description') >= 0 || low.indexOf('document_versions_doc_type_check') >= 0) {
+    return 'Project document versioning is not activated yet. Ask a Program Manager/Admin to run migration 12 in Supabase SQL Editor, then refresh the app.';
+  }
   if (low.indexOf('sort_order') >= 0 || low.indexOf('progress_percent') >= 0 || low.indexOf('sync_status') >= 0 || low.indexOf('last_modified_by') >= 0) {
     return 'The editable delivery plan database update is not applied yet. Ask a Program Manager/Admin to run migration 10 in Supabase SQL Editor, then refresh the app.';
   }
@@ -981,6 +1025,7 @@ function DeliverablesPanel(p) {
           ${d.syncNeeded && html`<${Badge} color="amber">Update Smartsheet<//>`}
           ${d.ready && html`<${Badge} color="green">Gate ready<//>`}
           ${d.url && html`<${A} href=${d.url} class="btn secondary small">Open<//>`}
+          ${!d.url && p.canEdit && p.onCreate && html`<button class="btn secondary small" onClick=${function(){p.onCreate(d.key)}}>${d.source === 'Smartsheet' ? 'Create Digital Pulse version' : 'Create'}</button>`}
           ${d.externalFile && /^https?:\/\//i.test(d.externalFile) && html`<a class="btn secondary small" href=${d.externalFile} target="_blank" rel="noreferrer">External file</a>`}
         </div>
       </div>`; })}
@@ -1769,7 +1814,7 @@ var BC_LEAN = {
         cols:[ {k:'measure', l:'Measure'}, {k:'baseline', l:'Baseline'}, {k:'target', l:'Target'} ] } ] },
     { title: '2. Digital assessment - Digital Team / Program Manager', guidance: 'One pragmatic delivery view. Avoid solution-design detail; capture only what affects the decision.',
       fields: [
-        { key:'proposed_solution', label:'Recommended approach', hint:'MVP or first delivery step, not the full design', required:true, ta:true, pmOnly:true },
+        { key:'proposed_solution', label:'Recommended approach', hint:'First delivery step, not the full solution design', required:true, ta:true, pmOnly:true },
         { key:'alternative', label:'Do nothing / alternative', hint:'what happens if we do not invest, or another option considered', pmOnly:true },
         { key:'estimated_cost', label:'Cost / effort range', hint:'rough one-time cost, recurring cost and internal effort range', required:true, pmOnly:true },
         { key:'systems_data', label:'Key feasibility point', hint:'main system, data, architecture or dependency point', pmOnly:true },
@@ -1911,8 +1956,9 @@ function LeanDocEditor(p) {
   var doc = p.doc, cfg = p.cfg;
   var isPMTT = p.auth.isPMTT;
   var isIdeaOwner = !isPMTT && p.idea.requester_id === p.auth.profile.id;
-  var canEdit = isPMTT;
-  function canEditItem() { return isPMTT; }
+  var isProjectManager = !!p.allowProjectLeadEdit && p.auth.profile.role === 'project_lead';
+  var canEdit = isPMTT || isProjectManager;
+  function canEditItem() { return canEdit; }
   var init = { status: doc.status, content: Object.assign({}, doc.content || {}) };
   cfg.sections.forEach(function(sec){ (sec.fields||[]).forEach(function(fl){
     if (fl.key.indexOf('col:') === 0) init[fl.key.slice(4)] = doc[fl.key.slice(4)] || ''; }); });
@@ -1968,13 +2014,16 @@ function LeanDocEditor(p) {
       <div style="display:flex;gap:8px" class="no-print">
         <button class="btn secondary" onClick=${function(){sv[1](true)}}>Versions (${(versions.data||[]).length})</button>
         <button class="btn secondary" onClick=${function(){window.print()}}>Export PDF</button>
-        ${isPMTT && html`<button class="btn secondary" onClick=${function(){save(true)}} disabled=${bz[0]}>Save as new version</button>`}
+        ${canEdit && html`<button class="btn secondary" onClick=${function(){save(true)}} disabled=${bz[0]}>Save as new version</button>`}
         ${canEdit && html`<button class="btn" onClick=${function(){save(false)}} disabled=${bz[0]}>Save</button>`}
       </div>
     </div>
     <${RoadmapNote} />
     ${isIdeaOwner && html`<div class="roadmap-note" style="background:var(--green-soft);border-color:var(--green);color:#14532d">
       <b>Idea Owner view:</b> This document is prepared and maintained by the Digital Transformation Team. Your original submission remains the business input baseline; the team may contact you for clarification.
+    </div>`}
+    ${isProjectManager && html`<div class="roadmap-note" style="background:var(--green-soft);border-color:var(--green);color:#14532d">
+      <b>Project Manager workspace:</b> You can maintain the document content and create versions. Governance status remains controlled by the Program Manager / Digital Transformation Team.
     </div>`}
     <div class="card no-print">
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
@@ -2035,6 +2084,34 @@ function CharterEditorPage(p) {
     <${LeanDocEditor} key=${ch.data.id + ch.data.version} docType="charter" doc=${ch.data} idea=${idea.data}
       auth=${p.auth} cfg=${CH_LEAN} completeness=${chCompletenessLean} decisions=${decisions.data||[]}
       onSaved=${function(){ch.reload()}} />
+  </div>`;
+}
+
+function ProjectDocEditorPage(p) {
+  var project = useAsync(function(){ return api.getProject(p.id, p.auth.session && p.auth.session.access_token); }, [p.id]);
+  var doc = useAsync(function(){
+    return p.kind === 'bc' ? api.getBCByProject(p.id) : api.getCharterByProject(p.id);
+  }, [p.id, p.kind]);
+  var decisions = useAsync(api.listDecisions, [p.id]);
+  if (project.loading || doc.loading) return html`<p>Loading...</p>`;
+  if (project.error || doc.error) return html`<div class="card"><h2>We could not open this document</h2><p style="color:var(--red)">${userErrorMessage(project.error || doc.error)}</p><${A} href=${'/projects/'+p.id}>Back to project<//></div>`;
+  if (!project.data) return html`<p class="muted">Project not found.</p>`;
+  if (!doc.data) return html`<p class="muted">This document has not been created yet. <${A} href=${'/projects/'+p.id}>Back to project<//></p>`;
+  var subject = {
+    id:project.data.id,
+    idea_id:project.data.project_id,
+    title:project.data.project_name,
+    requester_id:null,
+    committee_target:'Project Meeting'
+  };
+  var cfg = p.kind === 'bc' ? BC_LEAN : CH_LEAN;
+  var docType = p.kind === 'bc' ? 'business_case' : 'charter';
+  var completeness = p.kind === 'bc' ? bcCompletenessLean : chCompletenessLean;
+  return html`<div>
+    <p class="breadcrumb no-print"><${A} href=${'/projects/'+p.id}>Back to ${project.data.project_id}<//></p>
+    <${LeanDocEditor} key=${doc.data.id + doc.data.version} docType=${docType} doc=${doc.data} idea=${subject}
+      auth=${p.auth} cfg=${cfg} completeness=${completeness} decisions=${decisions.data||[]}
+      allowProjectLeadEdit=${true} onSaved=${function(){doc.reload()}} />
   </div>`;
 }
 
@@ -2361,6 +2438,47 @@ function WorkItemModal(p) {
     <button class="btn" onClick=${save} disabled=${bz[0]}>${bz[0] ? 'Saving…' : 'Save'}</button><//>`;
 }
 
+function descriptionSyncBadge(status) {
+  if (status === 'pending_push') return html`<${Badge} color="amber">Pending Smartsheet<//>`;
+  if (status === 'conflict') return html`<${Badge} color="red">Sync conflict<//>`;
+  return html`<${Badge} color="green">Synced<//>`;
+}
+function ProjectDescriptionCard(p) {
+  var project = p.project;
+  var editing = useState(false), value = useState(project.project_description || '');
+  var busy = useState(false), error = useState(null), showVersions = useState(false);
+  var versions = useAsync(function(){ return api.listVersions('project_description', project.id); }, [project.id, project.description_version]);
+  useEffect(function(){ value[1](project.project_description || ''); }, [project.id, project.description_version]);
+  function save() {
+    busy[1](true); error[1](null);
+    api.updateProjectDescription(project.id, value[0]).then(function(){
+      editing[1](false); p.onSaved();
+    }).catch(function(e){ error[1](userErrorMessage(e)); }).finally(function(){ busy[1](false); });
+  }
+  return html`<div class="card">
+    <div class="plan-toolbar">
+      <div><h2 class="mb0">Description</h2><div class="deliverable-meta"><span>v${project.description_version || 1}</span>${descriptionSyncBadge(project.description_sync_status || 'synced')}</div></div>
+      <div class="plan-actions no-print">
+        <button class="btn secondary small" onClick=${function(){showVersions[1](true)}}>History (${(versions.data||[]).length})</button>
+        ${p.canEdit && !editing[0] && html`<button class="btn secondary small icon-label" onClick=${function(){editing[1](true)}}><${NavIcon} name="edit" /> Edit</button>`}
+      </div>
+    </div>
+    ${editing[0]
+      ? html`<div class="no-print"><textarea style="min-height:130px;width:100%;box-sizing:border-box" value=${value[0]} onInput=${function(e){value[1](e.target.value)}}></textarea>
+          <div class="plan-actions" style="margin-top:10px"><button class="btn" onClick=${save} disabled=${busy[0]}>${busy[0]?'Saving...':'Save new version'}</button><button class="btn secondary" onClick=${function(){value[1](project.project_description||'');editing[1](false)}}>Cancel</button></div></div>`
+      : html`<p class="small" style="white-space:pre-wrap">${project.project_description || 'No description.'}</p>`}
+    ${project.description_sync_status === 'conflict' && html`<p class="small" style="color:var(--red);margin-bottom:0">Smartsheet contains a different description. The Digital Pulse value was preserved; export it back to Smartsheet or align the source file before re-importing.</p>`}
+    ${error[0] && html`<p style="color:var(--red)">${error[0]}</p>`}
+    ${showVersions[0] && html`<${Modal} title="Description history" onClose=${function(){showVersions[1](false)}}>
+      <div class="alert-line"><${Badge} color="green">Current v${project.description_version || 1}<//><span class="small">${project.project_description || 'No description.'}</span></div>
+      ${(versions.data||[]).map(function(v){ return html`<div class="card" key=${v.id} style="margin:10px 0;padding:12px">
+        <div class="plan-toolbar"><${Badge} color="gray">${v.version_label}<//><span class="small muted">${fmtDateTime(v.created_at)} - ${(v.saver&&v.saver.name)||'System'}</span></div>
+        <p class="small" style="white-space:pre-wrap;margin-bottom:0">${(v.snapshot&&v.snapshot.project_description)||'No description.'}</p>
+      </div>`; })}
+      ${!(versions.data||[]).length && html`<p class="muted small">No previous version yet.</p>`}<//>`}
+  </div>`;
+}
+
 /* ================= Project detail page (delivery workspace + comments) ================= */
 function ProjectDetailPage(p) {
   var project = useAsync(function(){ return api.getProject(p.id, p.auth.session && p.auth.session.access_token); }, [p.id, p.auth.session && p.auth.session.access_token]);
@@ -2477,6 +2595,34 @@ function ProjectDetailPage(p) {
       .then(function(){ project.reload(); })
       .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
   }
+  function createProjectDeliverable(kind) {
+    bz[1](true); er[1](null);
+    var common = { idea_id:linkedIdea ? linkedIdea.id : null, project_ref:pr.id, owner_id:p.auth.profile.id };
+    var action = kind === 'bc'
+      ? api.createBC(Object.assign({}, common, {
+          problem_statement:pr.project_description || null,
+          expected_benefits:linkedIdea ? linkedIdea.business_benefits : null,
+          estimated_value:linkedIdea ? linkedIdea.estimated_value : null,
+          content:{
+            problem:pr.project_description || '',
+            expected_benefits:linkedIdea ? linkedIdea.business_benefits || '' : '',
+            estimated_value:linkedIdea ? linkedIdea.estimated_value || '' : ''
+          }
+        }))
+      : api.createCharter(Object.assign({}, common, {
+          initiative_title:pr.project_name,
+          sponsor:pr.pillar_sponsor || null,
+          project_lead:projectManagerLabel(pr),
+          objectives:pr.project_description || null,
+          smartsheet_project_id:pr.project_id,
+          content:{ outcome:pr.project_description || '', problem:pr.project_description || '' }
+        }));
+    action.then(function(doc){
+      return api.addActivity('Project', pr.id, p.auth.profile.id, 'event',
+        (kind === 'bc' ? 'Business Case ' + doc.business_case_id : 'Project Charter ' + doc.charter_id) + ' created in Digital Pulse.').catch(function(){return null;});
+    }).then(function(){ deliverableDocs.reload(); activity.reload(); })
+      .catch(function(e){ er[1](userErrorMessage(e)); }).finally(function(){ bz[1](false); });
+  }
   function row(k, v) { return html`<tr key=${k}><td class="muted small" style="width:170px">${k}</td><td>${v != null && v !== '' ? v : '—'}</td></tr>`; }
   function statusBadge(v) {
     if (!v) return html`<span class="muted">—</span>`;
@@ -2527,11 +2673,9 @@ function ProjectDetailPage(p) {
     </div>
     <div class="grid cols-2">
       <div>
-        <div class="card">
-          <h2>Description</h2>
-          <p class="small" style="white-space:pre-wrap">${pr.project_description || 'No description.'}</p>
-        </div>
-        <${DeliverablesPanel} deliverables=${deliverables} />
+        <${ProjectDescriptionCard} key=${pr.id + '-' + (pr.description_version || 1)} project=${pr} canEdit=${canUpdate} onSaved=${project.reload} />
+        <${DeliverablesPanel} deliverables=${deliverables} canEdit=${canUpdate && !bz[0]} onCreate=${createProjectDeliverable} />
+        ${er[0] && html`<div class="card" style="border-left:4px solid var(--red);color:var(--red)">${er[0]}</div>`}
         ${alerts.length > 0 && html`<div class="card" style="border-left:4px solid var(--red)">
           <h2>⚠️ Alerts</h2>
           ${alerts.map(function(a, i){ return html`<div key=${i} class="alert-line">
@@ -2696,7 +2840,7 @@ function ProjectPanel(props) {
 }
 
 /* ================= Import / Export ================= */
-function ImportExportPage() {
+function ImportExportPage(p) {
   var projects = useAsync(api.listProjects, []);
   var ideas = useAsync(api.listIdeas, []);
   var pv = useState(null), preview = pv[0];
@@ -2714,14 +2858,23 @@ function ImportExportPage() {
   }
   function confirmImport() {
     bz[1](true); er[1](null);
+    var existingById = {};
+    (projects.data || []).forEach(function(project){ existingById[project.project_id] = project; });
+    var conflicts = 0, versionWrites = [];
     var stamped = preview.rows.map(function(r){
-      return Object.assign({}, r, { source_file:preview.fileName, imported_at:new Date().toISOString() }); });
+      var existing = existingById[r.project_id];
+      var merged = reconcileImportedProjectDescription(existing, r), next = merged.row;
+      if (merged.conflict) conflicts += 1;
+      if (existing && merged.snapshot) versionWrites.push(api.saveVersion('project_description', existing.id,
+        'v' + (existing.description_version || 1), merged.snapshot, p.auth.profile.id));
+      return Object.assign(next, { source_file:preview.fileName, imported_at:new Date().toISOString() });
+    });
     var itemStamp = (preview.workItems || []).map(function(r){
       return Object.assign({}, r, { source_file:preview.fileName, imported_at:new Date().toISOString() }); });
-    api.upsertProjects(stamped).then(function(){
+    Promise.all(versionWrites).then(function(){ return api.upsertProjects(stamped); }).then(function(){
       return api.upsertProjectWorkItems(itemStamp);
     }).then(function(){
-      dn[1]('Imported '+stamped.length+' projects and '+itemStamp.length+' delivery items from '+preview.fileName+' ('+preview.dupes.length+' updated, '+(stamped.length-preview.dupes.length)+' new).');
+      dn[1]('Imported '+stamped.length+' projects and '+itemStamp.length+' delivery items from '+preview.fileName+' ('+preview.dupes.length+' updated, '+(stamped.length-preview.dupes.length)+' new, '+conflicts+' description conflict(s) protected).');
       pv[1](null); projects.reload();
     }).catch(function(ex){ er[1](userErrorMessage(ex)); }).finally(function(){ bz[1](false); });
   }
@@ -2747,9 +2900,14 @@ function ImportExportPage() {
   }
   var lastImport = (projects.data||[]).filter(function(p){return p.imported_at})
     .sort(function(a,b){return new Date(b.imported_at)-new Date(a.imported_at)})[0];
+  var protectedDescriptions = preview ? preview.rows.filter(function(row){
+    var existing = (projects.data||[]).find(function(project){return project.project_id === row.project_id;});
+    return existing && ['pending_push','conflict'].indexOf(existing.description_sync_status) >= 0
+      && (existing.project_description||'') !== (row.project_description||'');
+  }).length : 0;
   return html`<div style="max-width:900px">
     <div class="topbar"><h1>SmartSheet Import / Export</h1></div>
-    <p class="muted small">SmartSheet remains the official source of truth. Phase 1 uses file exchange; a direct connector is on the roadmap (Phase 2).</p>
+    <p class="muted small">Smartsheet is the planning baseline; Digital Pulse owns governance and collaborative edits. File imports preserve local changes and surface conflicts for review.</p>
     <div class="card">
       <h2>Import projects (SmartSheet XLSX/CSV export)</h2>
       ${lastImport && html`<p class="small muted">Last import: ${fmtDateTime(lastImport.imported_at)} — ${lastImport.source_file}</p>`}
@@ -2761,6 +2919,7 @@ function ImportExportPage() {
             ${(preview.workItems || []).filter(function(w){return w.item_type === 'activity'}).length} activities will be attached to the project workspace.
           </span>`}</p>
         ${preview.dupes.length > 0 && html`<p class="small" style="color:var(--amber)">⚠ ${preview.dupes.length} existing project IDs will be updated: ${preview.dupes.join(', ')}</p>`}
+        ${protectedDescriptions > 0 && html`<p class="small" style="color:var(--red)">⚠ ${protectedDescriptions} Digital Pulse description edit(s) differ from Smartsheet. Local values will be preserved and flagged as conflicts.</p>`}
         ${preview.warnings.map(function(w,i){return html`<p key=${i} class="small" style="color:var(--amber)">⚠ ${w}</p>`})}
         <div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
           <table class="data"><thead><tr><th>Id</th><th>Name</th><th>Stage</th><th>Pillar</th><th>Lead</th><th>Initiative</th></tr></thead>
@@ -3545,9 +3704,11 @@ function App() {
   else if ((m = route.match(/^\/ideas\/([^/]+)$/))) page = html`<${IdeaDetail} id=${m[1]} auth=${auth} />`;
   else if (route === '/decisions') page = html`<${DecisionLog} auth=${auth} />`;
   else if (route === '/reviews') page = html`<${ReviewsPage} />`;
+  else if ((m = route.match(/^\/projects\/([^/]+)\/business-case$/))) page = html`<${ProjectDocEditorPage} id=${m[1]} kind="bc" auth=${auth} />`;
+  else if ((m = route.match(/^\/projects\/([^/]+)\/charter$/))) page = html`<${ProjectDocEditorPage} id=${m[1]} kind="pc" auth=${auth} />`;
   else if ((m = route.match(/^\/projects\/([^/]+)$/))) page = html`<${ProjectDetailPage} id=${m[1]} auth=${auth} />`;
   else if (route === '/projects') page = html`<${ProjectsPage} auth=${auth} />`;
-  else if (route === '/import-export') page = html`<${ImportExportPage} />`;
+  else if (route === '/import-export') page = html`<${ImportExportPage} auth=${auth} />`;
   else if (route === '/notifications') page = html`<${NotificationsPage} refreshUnread=${refreshUnread} />`;
   else if (route === '/admin') page = html`<${AdminPage} onRefChange=${loadReference} />`;
   else page = html`<p>Not found. <${A} href="/">Home<//></p>`;

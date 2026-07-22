@@ -1,5 +1,5 @@
 -- ============================================================
--- Digital Pulse - Supabase schema (MVP)
+-- Digital Pulse - Supabase full installation schema
 -- Run this in the Supabase SQL editor of a fresh project.
 -- ============================================================
 
@@ -8,7 +8,9 @@ drop trigger if exists on_auth_user_created on auth.users;
 drop function if exists public.handle_new_user, public.my_role, public.is_pm_or_tt,
   public.touch_updated_at, public.notify_pm_tt, public.on_idea_insert,
   public.on_idea_stage_change, public.qualify_idea, public.convert_to_project,
-  public.can_read_project_deliverables cascade;
+  public.can_read_project_deliverables, public.can_manage_project_deliverable,
+  public.can_manage_document_version, public.prevent_project_lead_document_approval,
+  public.update_project_description cascade;
 drop table if exists public.notifications, public.activity, public.document_versions,
   public.decisions, public.business_cases, public.project_charters, public.projects,
   public.ideas, public.profiles cascade;
@@ -100,7 +102,8 @@ create table public.ideas (
 create table public.business_cases (
   id uuid primary key default gen_random_uuid(),
   business_case_id text unique not null default 'BC-' || lpad(nextval('public.bc_seq')::text, 4, '0'),
-  idea_id uuid not null references public.ideas(id) on delete cascade,
+  idea_id uuid references public.ideas(id) on delete cascade,
+  project_ref uuid,
   version text not null default 'v0',
   status text not null default 'Draft'
     check (status in ('Draft','In Review','Ready for Gate','Approved','Rework')),
@@ -127,7 +130,7 @@ create table public.business_cases (
 -- Version snapshots (append-only history)
 create table public.document_versions (
   id uuid primary key default gen_random_uuid(),
-  doc_type text not null check (doc_type in ('business_case','charter')),
+  doc_type text not null check (doc_type in ('business_case','charter','project_description')),
   doc_id uuid not null,
   version_label text not null,
   snapshot jsonb not null,
@@ -139,7 +142,8 @@ create table public.document_versions (
 create table public.project_charters (
   id uuid primary key default gen_random_uuid(),
   charter_id text unique not null default 'CH-' || lpad(nextval('public.charter_seq')::text, 4, '0'),
-  idea_id uuid not null references public.ideas(id) on delete cascade,
+  idea_id uuid references public.ideas(id) on delete cascade,
+  project_ref uuid,
   version text not null default 'v0',
   status text not null default 'Draft'
     check (status in ('Draft','In Review','Ready for Gate','Approved','Rework')),
@@ -216,8 +220,19 @@ create table public.projects (
   needs_attention text,
   source_file text,
   imported_at timestamptz,
+  description_version integer not null default 1,
+  description_sync_status text not null default 'synced'
+    check (description_sync_status in ('synced','pending_push','conflict')),
+  description_updated_by uuid references public.profiles(id),
   updated_at timestamptz not null default now()
 );
+
+alter table public.business_cases
+  add constraint business_cases_project_ref_fkey foreign key (project_ref) references public.projects(id) on delete cascade,
+  add constraint business_cases_parent_check check (idea_id is not null or project_ref is not null);
+alter table public.project_charters
+  add constraint project_charters_project_ref_fkey foreign key (project_ref) references public.projects(id) on delete cascade,
+  add constraint project_charters_parent_check check (idea_id is not null or project_ref is not null);
 
 create table public.project_work_items (
   id uuid primary key default gen_random_uuid(),
@@ -301,6 +316,7 @@ create trigger t_ideas_touch before update on public.ideas for each row execute 
 create trigger t_bc_touch before update on public.business_cases for each row execute function public.touch_updated_at();
 create trigger t_ch_touch before update on public.project_charters for each row execute function public.touch_updated_at();
 create trigger t_dec_touch before update on public.decisions for each row execute function public.touch_updated_at();
+create trigger t_projects_touch before update on public.projects for each row execute function public.touch_updated_at();
 create trigger t_project_work_items_touch before update on public.project_work_items for each row execute function public.touch_updated_at();
 create trigger t_project_updates_touch before update on public.project_updates for each row execute function public.touch_updated_at();
 
@@ -440,6 +456,87 @@ $$;
 revoke all on function public.can_read_project_deliverables(uuid, text) from public;
 grant execute on function public.can_read_project_deliverables(uuid, text) to authenticated;
 
+create or replace function public.can_manage_project_deliverable(
+  p_idea uuid, p_smartsheet_project_id text, p_project_ref uuid)
+returns boolean language sql security definer stable set search_path = public as $$
+  select coalesce(
+    public.is_pm_or_tt()
+    or (
+      public.my_role() = 'project_lead'
+      and exists (
+        select 1 from public.projects p
+        left join public.ideas i on i.idea_id = p.linked_initiative_id
+        where (p.project_manager_id = auth.uid()
+          or p.project_lead = (select name from public.profiles where id = auth.uid())
+          or p.project_lead = (select email from public.profiles where id = auth.uid()))
+          and (p.id = p_project_ref or p.project_id = p_smartsheet_project_id or i.id = p_idea)
+      )
+    ), false
+  )
+$$;
+revoke all on function public.can_manage_project_deliverable(uuid, text, uuid) from public;
+grant execute on function public.can_manage_project_deliverable(uuid, text, uuid) to authenticated;
+
+create or replace function public.can_manage_document_version(p_doc_type text, p_doc_id uuid)
+returns boolean language sql security definer stable set search_path = public as $$
+  select coalesce(
+    public.is_pm_or_tt()
+    or case p_doc_type
+      when 'project_description' then exists (
+        select 1 from public.projects p where p.id = p_doc_id
+          and public.can_manage_project_deliverable(null, p.project_id, p.id))
+      when 'business_case' then exists (
+        select 1 from public.business_cases bc where bc.id = p_doc_id
+          and public.can_manage_project_deliverable(bc.idea_id, null, bc.project_ref))
+      when 'charter' then exists (
+        select 1 from public.project_charters ch where ch.id = p_doc_id
+          and public.can_manage_project_deliverable(ch.idea_id, ch.smartsheet_project_id, ch.project_ref))
+      else false
+    end, false
+  )
+$$;
+revoke all on function public.can_manage_document_version(text, uuid) from public;
+grant execute on function public.can_manage_document_version(text, uuid) to authenticated;
+
+create or replace function public.prevent_project_lead_document_approval()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if public.my_role() = 'project_lead' and new.status is distinct from old.status then
+    raise exception 'Only Program Manager / Digital Transformation Team can change governance status';
+  end if;
+  return new;
+end; $$;
+create trigger t_bc_project_lead_status before update on public.business_cases
+for each row execute function public.prevent_project_lead_document_approval();
+create trigger t_ch_project_lead_status before update on public.project_charters
+for each row execute function public.prevent_project_lead_document_approval();
+
+create or replace function public.update_project_description(p_project uuid, p_description text)
+returns public.projects language plpgsql security definer set search_path = public as $$
+declare
+  v_project public.projects%rowtype;
+begin
+  select * into v_project from public.projects where id = p_project for update;
+  if not found then raise exception 'Project not found'; end if;
+  if not public.can_manage_project_deliverable(null, v_project.project_id, v_project.id) then
+    raise exception 'You are not assigned to edit this project';
+  end if;
+  if coalesce(v_project.project_description, '') = coalesce(p_description, '') then return v_project; end if;
+  insert into public.document_versions (doc_type, doc_id, version_label, snapshot, saved_by)
+  values ('project_description', v_project.id, 'v' || v_project.description_version,
+    jsonb_build_object('project_description', v_project.project_description,
+      'description_sync_status', v_project.description_sync_status, 'updated_at', v_project.updated_at), auth.uid());
+  update public.projects
+  set project_description = nullif(trim(p_description), ''),
+      description_version = description_version + 1,
+      description_sync_status = 'pending_push',
+      description_updated_by = auth.uid()
+  where id = p_project returning * into v_project;
+  return v_project;
+end; $$;
+revoke all on function public.update_project_description(uuid, text) from public;
+grant execute on function public.update_project_description(uuid, text) to authenticated;
+
 -- ============================================================
 -- Row Level Security (permission matrix from the spec)
 -- ============================================================
@@ -479,19 +576,29 @@ create policy ideas_update_own_before_triage on public.ideas for update to authe
 create policy ideas_project_lead_select on public.ideas for select to authenticated
   using (public.can_read_project_deliverables(id, null));
 
--- Business cases / charters: PM + TT full, assigned project lead read+update
+-- Business cases / charters: PM + TT full; assigned Project Manager maintains project documents.
 create policy bc_all_pm_tt on public.business_cases for all to authenticated
   using (public.is_pm_or_tt()) with check (public.is_pm_or_tt());
 create policy bc_lead on public.business_cases for select to authenticated
   using (exists (select 1 from public.ideas i where i.id = business_cases.idea_id and i.owner_id = auth.uid()));
 create policy bc_project_lead_select on public.business_cases for select to authenticated
-  using (public.can_read_project_deliverables(idea_id, null));
+  using (public.can_manage_project_deliverable(idea_id, null, project_ref));
+create policy bc_project_lead_insert on public.business_cases for insert to authenticated
+  with check (public.can_manage_project_deliverable(idea_id, null, project_ref));
+create policy bc_project_lead_update on public.business_cases for update to authenticated
+  using (public.can_manage_project_deliverable(idea_id, null, project_ref))
+  with check (public.can_manage_project_deliverable(idea_id, null, project_ref));
 create policy ch_all_pm_tt on public.project_charters for all to authenticated
   using (public.is_pm_or_tt()) with check (public.is_pm_or_tt());
 create policy ch_lead on public.project_charters for select to authenticated
   using (exists (select 1 from public.ideas i where i.id = project_charters.idea_id and i.owner_id = auth.uid()));
 create policy ch_project_lead_select on public.project_charters for select to authenticated
-  using (public.can_read_project_deliverables(idea_id, smartsheet_project_id));
+  using (public.can_manage_project_deliverable(idea_id, smartsheet_project_id, project_ref));
+create policy ch_project_lead_insert on public.project_charters for insert to authenticated
+  with check (public.can_manage_project_deliverable(idea_id, smartsheet_project_id, project_ref));
+create policy ch_project_lead_update on public.project_charters for update to authenticated
+  using (public.can_manage_project_deliverable(idea_id, smartsheet_project_id, project_ref))
+  with check (public.can_manage_project_deliverable(idea_id, smartsheet_project_id, project_ref));
 
 -- Decisions: PM + TT full; owner / action owner read+update
 create policy dec_all_pm_tt on public.decisions for all to authenticated
@@ -591,6 +698,10 @@ create policy act_insert on public.activity for insert to authenticated
 -- Document versions: PM/TT
 create policy dv_all_pm_tt on public.document_versions for all to authenticated
   using (public.is_pm_or_tt()) with check (public.is_pm_or_tt());
+create policy dv_project_lead_select on public.document_versions for select to authenticated
+  using (public.can_manage_document_version(doc_type, doc_id));
+create policy dv_project_lead_insert on public.document_versions for insert to authenticated
+  with check (public.can_manage_document_version(doc_type, doc_id));
 
 -- ============================================================
 -- Bootstrap: after your first signup, promote yourself:
@@ -617,6 +728,7 @@ returns trigger language plpgsql security definer set search_path = public as $$
 declare
   changed text[];
   rid uuid;
+  related_type text := TG_ARGV[0];
 begin
   select array_agg(n.key) into changed
   from jsonb_each(to_jsonb(new)) n
@@ -627,9 +739,12 @@ begin
     changed := array_remove(changed, 'stage'); -- déjà loggé par le trigger dédié avec un message plus lisible
   end if;
   if changed is null or array_length(changed, 1) is null then return new; end if;
-  if TG_TABLE_NAME in ('business_cases','project_charters') then rid := new.idea_id; else rid := new.id; end if;
+  if TG_TABLE_NAME in ('business_cases','project_charters') then
+    rid := coalesce(new.idea_id, new.project_ref);
+    if new.idea_id is null then related_type := 'Project'; end if;
+  else rid := new.id; end if;
   insert into public.activity (related_type, related_id, user_id, kind, message)
-  values (TG_ARGV[0], rid, auth.uid(), 'event', TG_ARGV[1] || ' updated: ' || array_to_string(changed, ', '));
+  values (related_type, rid, auth.uid(), 'event', TG_ARGV[1] || ' updated: ' || array_to_string(changed, ', '));
   return new;
 end; $$;
 
