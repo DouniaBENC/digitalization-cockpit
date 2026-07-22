@@ -104,6 +104,46 @@ table.data tr:hover td{background:#faf9f6}
 .status-dot.done{background:var(--green)}
 .status-dot.late{background:var(--red)}
 .update-card{border-left:4px solid var(--border);padding:10px 12px;background:#faf9f6;border-radius:8px;margin-bottom:8px}
+.pulse-form{border-top:1px solid var(--border);padding-top:14px;margin-top:12px}
+.weekly-pulse-card{container-type:inline-size}
+.pulse-form-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.pulse-system{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;background:#f4f2ed;border-radius:7px}
+.pulse-section{padding:13px 0;border-top:1px solid var(--border)}
+.pulse-section:first-of-type{border-top:none;padding-top:0}
+.pulse-section h3{font-size:13.5px;margin-bottom:9px}
+.pulse-fields-3{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,.45fr) minmax(145px,.4fr);gap:10px}
+.pulse-fields-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,.45fr);gap:10px}
+.pulse-form .field{margin-bottom:0}
+.pulse-form textarea{min-height:76px}
+.pulse-validation{margin:10px 0;color:var(--red);font-size:12px}
+.pulse-card-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start}
+.pulse-card-tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.pulse-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;margin:8px 0}
+.pulse-detail{font-size:12px;min-width:0;overflow-wrap:anywhere}
+.pulse-review-note{border-top:1px solid var(--border);padding-top:8px;margin-top:8px}
+.review-kpis{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:9px;margin-bottom:12px}
+.review-kpi{border-left:3px solid var(--border);padding:9px 11px;background:#fff}
+.review-kpi strong{display:block;font-size:22px;line-height:1.05}
+.review-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.review-list{border-top:1px solid var(--border)}
+.review-row{display:grid;grid-template-columns:125px minmax(220px,1.2fr) minmax(240px,1.4fr) auto;gap:12px;align-items:start;padding:12px 0;border-bottom:1px solid var(--border)}
+.review-row:last-child{border-bottom:none}
+.review-row-summary{min-width:0;overflow-wrap:anywhere}
+.review-row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;min-width:188px}
+.review-exception{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+@media(max-width:900px){
+  .pulse-fields-3,.pulse-fields-2,.pulse-detail-grid{grid-template-columns:1fr}
+  .review-kpis{grid-template-columns:repeat(2,1fr)}
+  .review-row{grid-template-columns:1fr}
+  .review-row-actions{justify-content:flex-start;min-width:0}
+}
+@container (max-width:620px){
+  .pulse-fields-2{grid-template-columns:1fr}
+  .pulse-fields-3{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pulse-fields-3>.field:first-child{grid-column:1 / -1}
+}
+@container (max-width:390px){.pulse-fields-3{grid-template-columns:1fr}.pulse-fields-3>.field:first-child{grid-column:auto}}
+@media(max-width:520px){.review-kpis{grid-template-columns:1fr}}
 .roadmap-note{background:#f4f2ed;border:1px dashed #c9c3b7;color:#4a473f;border-radius:var(--radius);padding:10px 14px;font-size:12.5px;margin-bottom:14px}
 .progress{background:#eef0f4;border-radius:999px;height:8px;overflow:hidden}
 .progress>div{height:100%;border-radius:999px;transition:width .3s}
@@ -188,7 +228,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.11';
+var APP_VERSION = '2026.07.22.12';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -496,23 +536,36 @@ function projectWorkSummary(items) {
     pct:measured.length ? Math.round(progressTotal / measured.length) : null, overdue:overdue, next:next };
 }
 function latestProjectUpdate(updates) {
-  return (updates || []).slice().sort(function(a,b){ return new Date(b.update_week || b.created_at) - new Date(a.update_week || a.created_at); })[0] || null;
+  return (updates || []).slice().sort(function(a,b){
+    var dateDiff = new Date(b.update_week || b.created_at) - new Date(a.update_week || a.created_at);
+    if (dateDiff) return dateDiff;
+    var revisionDiff = (Number(b.revision) || 1) - (Number(a.revision) || 1);
+    if (revisionDiff) return revisionDiff;
+    return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+  })[0] || null;
 }
 function daysSince(d) {
   if (!d) return null;
   return Math.floor((new Date() - new Date(d)) / 86400000);
 }
 function projectDeliveryHealth(p, items, updates, deliverables) {
-  var reasons = projectAlerts(p, deliverables).map(function(a){ return a.msg; });
-  var ws = projectWorkSummary(items);
+  var system = projectSystemHealth(p, items, deliverables);
+  var reasons = system.reasons.slice();
+  var ws = system.work;
   var latest = latestProjectUpdate(updates);
-  if (ws.overdue.length) reasons.push(ws.overdue.length + ' overdue milestone/activity item(s)');
   if (!isProjectClosed(p) && daysSince(latest && (latest.update_week || latest.created_at)) > 7) reasons.push('No weekly update in the last 7 days');
   if (!latest && !isProjectClosed(p)) reasons.push('No project update submitted yet');
   if (latest && latest.health_status === 'Red') reasons.push('Last update is Red');
-  var red = ws.overdue.length > 0 || (latest && latest.health_status === 'Red') || reasons.some(function(r){ return r.indexOf('Planned end date passed') >= 0; });
-  var amber = reasons.length > 0 || (latest && latest.health_status === 'Amber');
-  return { status:red ? 'Red' : amber ? 'Amber' : 'Green', reasons:reasons, work:ws, latest:latest };
+  var red = system.status === 'Red' || (latest && latest.health_status === 'Red');
+  var amber = reasons.length > 0 || system.status === 'Amber' || (latest && latest.health_status === 'Amber');
+  return { status:red ? 'Red' : amber ? 'Amber' : 'Green', reasons:reasons, work:ws, latest:latest, system:system };
+}
+function projectSystemHealth(p, items, deliverables) {
+  var reasons = projectAlerts(p, deliverables).map(function(a){ return a.msg; });
+  var ws = projectWorkSummary(items);
+  if (ws.overdue.length) reasons.push(ws.overdue.length + ' overdue milestone/activity item(s)');
+  var red = ws.overdue.length > 0 || reasons.some(function(r){ return r.indexOf('Planned end date passed') >= 0; });
+  return { status:red ? 'Red' : reasons.length ? 'Amber' : 'Green', reasons:reasons, work:ws };
 }
 function healthBadge(h) {
   var col = h === 'Green' ? 'green' : h === 'Red' ? 'red' : 'amber';
@@ -647,6 +700,18 @@ var api = {
     });
   },
   createProjectUpdate: function(f){ return sb.from('project_updates').insert(f).select().single().then(one); },
+  reviewProjectUpdate: function(id, action, note, decision){
+    decision = decision || {};
+    return sb.rpc('review_project_update', {
+      p_update:id,
+      p_action:action,
+      p_note:note || null,
+      p_create_decision:action === 'Escalate',
+      p_decision_title:decision.title || null,
+      p_committee:decision.committee || 'Project Meeting',
+      p_due_date:decision.due_date || null
+    }).then(one);
+  },
   listBusinessCasesLight: function(){ return sb.from('business_cases').select('*').order('updated_at',{ascending:false}).then(one); },
   listChartersLight: function(){ return sb.from('project_charters').select('*').order('updated_at',{ascending:false}).then(one); },
   listDeliverablesLight: function(){ return Promise.all([api.listBusinessCasesLight(), api.listChartersLight()]).then(function(r){ return {bcs:r[0], charters:r[1]}; }); },
@@ -2307,39 +2372,97 @@ function ProjectTimeline(p) {
     </div>
   </div>`;
 }
+function pulseReviewBadge(status) {
+  status = status || 'Submitted';
+  var color = status === 'Reviewed' ? 'green' : status === 'Escalated' ? 'red' : status === 'Action required' ? 'amber' : 'gray';
+  return html`<${Badge} color=${color}>${status}<//>`;
+}
+function pulseValidation(form, system) {
+  var errors = [];
+  var declared = form.health_status || system.status;
+  if (!String(form.progress_summary || '').trim()) errors.push('Add a short summary of what changed this week.');
+  if (declared !== system.status && !String(form.rag_override_reason || '').trim()) errors.push('Explain why the declared health differs from the system recommendation.');
+  if (String(form.blockers || '').trim() && (!form.blocker_owner || !form.blocker_due_date)) errors.push('Add an owner and target date for the blocker.');
+  if (String(form.next_actions || '').trim() && (!form.action_owner || !form.action_due_date)) errors.push('Add an owner and due date for the next action.');
+  if (String(form.support_needed || '').trim() && (!form.support_recipient || !form.support_due_date)) errors.push('Choose who should help and when support is needed.');
+  return errors;
+}
 function ProjectUpdatePanel(p) {
-  var form = p.form[0];
-  return html`<div class="card">
-    <h2>Weekly delivery updates</h2>
-    ${p.canUpdate && html`<div class="no-print" style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px">
-      <div class="grid cols-2">
-        <${Field} label="Health">
-          <select value=${form.health_status} onChange=${function(e){p.setForm('health_status', e.target.value)}}>
-            <option>Green</option><option>Amber</option><option>Red</option>
-          </select><//>
-        <${Field} label="Progress summary" hint="required">
-          <textarea value=${form.progress_summary} onInput=${function(e){p.setForm('progress_summary', e.target.value)}} placeholder="What moved since the last update?"></textarea><//>
-      </div>
-      <div class="grid cols-2">
-        <${Field} label="Blockers / issues"><textarea value=${form.blockers} onInput=${function(e){p.setForm('blockers', e.target.value)}}></textarea><//>
-        <${Field} label="Next actions"><textarea value=${form.next_actions} onInput=${function(e){p.setForm('next_actions', e.target.value)}}></textarea><//>
-      </div>
-      <${Field} label="Support needed from Program Manager / Digital Team"><textarea value=${form.support_needed} onInput=${function(e){p.setForm('support_needed', e.target.value)}}></textarea><//>
-      <button class="btn" onClick=${p.onSubmit} disabled=${p.busy || !form.progress_summary.trim()}>Submit weekly update</button>
-    </div>`}
-    ${(p.updates || []).map(function(u){
-      return html`<div class="update-card" key=${u.id} style="border-left-color:${u.health_status === 'Red' ? 'var(--red)' : u.health_status === 'Amber' ? 'var(--amber)' : 'var(--green)'}">
-        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-          <b>${fmtDate(u.update_week || u.created_at)}</b>${healthBadge(u.health_status)}
+  var form = p.form[0], system = p.system;
+  var declared = form.health_status || system.status;
+  var errors = pulseValidation(form, system);
+  return html`<div class="card weekly-pulse-card">
+    <div class="pulse-form-head">
+      <div><h2>Weekly Pulse</h2><p class="muted small mb0">A concise delivery snapshot. Plan progress is calculated from activities and is not edited here.</p></div>
+      <div class="pulse-system"><span class="small muted">Current plan</span>${healthBadge(system.status)}<b class="small">${system.work.pct == null ? 'No measured progress' : system.work.pct + '%'}</b></div>
+    </div>
+    ${p.canUpdate && html`<div class="pulse-form no-print">
+      <div class="pulse-fields-2 pulse-section">
+        <${Field} label="What changed this week?" hint="required">
+          <textarea value=${form.progress_summary} onInput=${function(e){p.setForm('progress_summary', e.target.value)}} placeholder="Outcomes achieved, milestone movement or material change since the last Pulse"></textarea><//>
+        <div>
+          <${Field} label="Overall health" hint=${'system suggests ' + system.status}>
+            <select value=${declared} onChange=${function(e){p.setForm('health_status', e.target.value)}}>
+              <option>Green</option><option>Amber</option><option>Red</option>
+            </select><//>
+          ${declared !== system.status && html`<${Field} label="Override reason" hint="required">
+            <textarea value=${form.rag_override_reason} onInput=${function(e){p.setForm('rag_override_reason', e.target.value)}} placeholder="What does the plan data not show?"></textarea><//>`}
         </div>
-        <p class="small">${u.progress_summary}</p>
-        ${u.blockers && html`<p class="small"><b>Blockers:</b> ${u.blockers}</p>`}
-        ${u.next_actions && html`<p class="small"><b>Next:</b> ${u.next_actions}</p>`}
-        ${u.support_needed && html`<p class="small"><b>Support needed:</b> ${u.support_needed}</p>`}
-        <div class="small muted">${(u.author && (u.author.name || u.author.email)) || 'Project team'}</div>
-      </div>`;
-    })}
-    ${!(p.updates || []).length && html`<p class="muted small">No weekly update yet.</p>`}
+      </div>
+      <div class="pulse-section">
+        <h3>Blocker or issue</h3>
+        <div class="pulse-fields-3">
+          <${Field} label="Impact"><textarea value=${form.blockers} onInput=${function(e){p.setForm('blockers', e.target.value)}} placeholder="Leave blank when there is no blocker"></textarea><//>
+          <${Field} label="Owner"><input type="text" value=${form.blocker_owner} onInput=${function(e){p.setForm('blocker_owner', e.target.value)}} placeholder="Name or email" /><//>
+          <${Field} label="Target date"><input type="date" value=${form.blocker_due_date} onInput=${function(e){p.setForm('blocker_due_date', e.target.value)}} /><//>
+        </div>
+      </div>
+      <div class="pulse-section">
+        <h3>Next 7 days</h3>
+        <div class="pulse-fields-3">
+          <${Field} label="Next action"><textarea value=${form.next_actions} onInput=${function(e){p.setForm('next_actions', e.target.value)}} placeholder="The most important committed next step"></textarea><//>
+          <${Field} label="Owner"><input type="text" value=${form.action_owner} onInput=${function(e){p.setForm('action_owner', e.target.value)}} placeholder="Name or email" /><//>
+          <${Field} label="Due date"><input type="date" value=${form.action_due_date} onInput=${function(e){p.setForm('action_due_date', e.target.value)}} /><//>
+        </div>
+      </div>
+      <div class="pulse-section">
+        <h3>Program support</h3>
+        <div class="pulse-fields-3">
+          <${Field} label="Support requested"><textarea value=${form.support_needed} onInput=${function(e){p.setForm('support_needed', e.target.value)}} placeholder="Describe the specific help or decision needed"></textarea><//>
+          <${Field} label="Requested from">
+            <select value=${form.support_recipient} onChange=${function(e){p.setForm('support_recipient', e.target.value)}}>
+              <option value="">Select</option><option>Program Manager</option><option>Digital Transformation Team</option>
+            </select><//>
+          <${Field} label="Needed by"><input type="date" value=${form.support_due_date} onInput=${function(e){p.setForm('support_due_date', e.target.value)}} /><//>
+        </div>
+        <div class="checks" style="margin-top:9px"><label><input type="checkbox" checked=${form.decision_required} onChange=${function(e){p.setForm('decision_required', e.target.checked)}} /> A governance decision is required</label></div>
+      </div>
+      ${errors.length > 0 && html`<div class="pulse-validation">${errors.map(function(msg){return html`<div key=${msg}>${msg}</div>`})}</div>`}
+      <button class="btn" onClick=${p.onSubmit} disabled=${p.busy || errors.length > 0}>${p.busy ? 'Submitting...' : 'Submit Weekly Pulse'}</button>
+      <span class="muted small" style="margin-left:9px">Submitted Pulses are preserved; corrections create a new revision.</span>
+    </div>`}
+    <div style="margin-top:14px">
+      ${(p.updates || []).map(function(u){
+        var systemMismatch = u.system_health_status && u.system_health_status !== u.health_status;
+        return html`<div class="update-card" key=${u.id} style="border-left-color:${u.health_status === 'Red' ? 'var(--red)' : u.health_status === 'Amber' ? 'var(--amber)' : 'var(--green)'}">
+          <div class="pulse-card-head">
+            <div><b>${fmtDate(u.update_week || u.created_at)}</b><span class="muted small"> · v${u.revision || 1} · ${(u.author && (u.author.name || u.author.email)) || 'Project team'}</span></div>
+            <div class="pulse-card-tags">${healthBadge(u.health_status)}${pulseReviewBadge(u.review_status)}${u.decision_required && html`<${Badge} color="red">Decision needed<//>`}</div>
+          </div>
+          <p class="small" style="white-space:pre-line">${u.progress_summary}</p>
+          <div class="pulse-detail-grid">
+            ${u.blockers && html`<div class="pulse-detail"><b>Blocker</b><br />${u.blockers}<div class="muted">${u.blocker_owner || 'Owner not recorded'}${u.blocker_due_date ? ' · due ' + fmtDate(u.blocker_due_date) : ''}</div></div>`}
+            ${u.next_actions && html`<div class="pulse-detail"><b>Next action</b><br />${u.next_actions}<div class="muted">${u.action_owner || 'Owner not recorded'}${u.action_due_date ? ' · due ' + fmtDate(u.action_due_date) : ''}</div></div>`}
+            ${u.support_needed && html`<div class="pulse-detail"><b>Support requested</b><br />${u.support_needed}<div class="muted">${u.support_recipient || 'Recipient not recorded'}${u.support_due_date ? ' · needed by ' + fmtDate(u.support_due_date) : ''}</div></div>`}
+            ${u.current_milestone && html`<div class="pulse-detail"><b>Milestone snapshot</b><br />${u.current_milestone}<div class="muted">${u.current_milestone_date ? fmtDate(u.current_milestone_date) : ''}${u.system_progress_percent != null ? ' · plan ' + u.system_progress_percent + '%' : ''}</div></div>`}
+          </div>
+          ${systemMismatch && html`<p class="small muted"><b>RAG override:</b> system ${u.system_health_status} → declared ${u.health_status}. ${u.rag_override_reason || ''}</p>`}
+          ${u.review_note && html`<div class="pulse-review-note small"><b>Review:</b> ${u.review_note}${u.reviewed_at ? html`<span class="muted"> · ${fmtDateTime(u.reviewed_at)}</span>` : ''}</div>`}
+          ${u.escalated_decision_id && html`<p class="small mb0"><${A} href="/decisions">Open linked decision →<//></p>`}
+        </div>`;
+      })}
+      ${!(p.updates || []).length && html`<p class="muted small">No Weekly Pulse submitted yet.</p>`}
+    </div>
   </div>`;
 }
 
@@ -2493,7 +2616,13 @@ function ProjectDetailPage(p) {
   var updates = useAsync(function(){
     return project.data ? api.listProjectUpdates(project.data.id) : Promise.resolve([]);
   }, [p.id, project.data && project.data.id]);
-  var uf = useState({ health_status:'Green', progress_summary:'', blockers:'', next_actions:'', support_needed:'' });
+  var emptyPulse = function(){ return {
+    health_status:'', progress_summary:'', rag_override_reason:'',
+    blockers:'', blocker_owner:'', blocker_due_date:'',
+    next_actions:'', action_owner:'', action_due_date:'',
+    support_needed:'', support_recipient:'', support_due_date:'', decision_required:false
+  }; };
+  var uf = useState(emptyPulse());
   var wi = useState(null);
   if (project.loading || deliverableDocs.loading) return html`<div class="card" style="max-width:620px">
     <h2>Loading project workspace…</h2>
@@ -2531,20 +2660,40 @@ function ProjectDetailPage(p) {
   }
   function submitUpdate() {
     var form = uf[0];
-    if (!form.progress_summary.trim()) return;
+    var system = delivery.system;
+    var validation = pulseValidation(form, system);
+    if (validation.length) { er[1](validation.join(' ')); return; }
+    var declaredHealth = form.health_status || system.status;
     bz[1](true); er[1](null);
     api.createProjectUpdate({
       project_ref: pr.id,
       author_id: p.auth.profile.id,
       update_week: new Date().toISOString().slice(0,10),
-      health_status: form.health_status,
+      health_status: declaredHealth,
       progress_summary: form.progress_summary.trim(),
       blockers: form.blockers.trim() || null,
       next_actions: form.next_actions.trim() || null,
-      support_needed: form.support_needed.trim() || null
+      support_needed: form.support_needed.trim() || null,
+      system_health_status: system.status,
+      system_progress_percent: system.work.pct,
+      system_health_reasons: system.reasons,
+      current_milestone: system.work.next ? system.work.next.name : null,
+      current_milestone_date: system.work.next ? system.work.next.planned_end_date : null,
+      rag_override_reason: declaredHealth !== system.status ? form.rag_override_reason.trim() : null,
+      blocker_owner: form.blocker_owner.trim() || null,
+      blocker_due_date: form.blocker_due_date || null,
+      action_owner: form.action_owner.trim() || null,
+      action_due_date: form.action_due_date || null,
+      support_recipient: form.support_recipient || null,
+      support_due_date: form.support_due_date || null,
+      decision_required: !!form.decision_required,
+      review_status: 'Submitted'
+    }).then(function(saved){
+      return api.addActivity('Project', pr.id, p.auth.profile.id, 'event',
+        'Weekly Pulse submitted (' + declaredHealth + ', v' + (saved.revision || 1) + ').').catch(function(){return null;});
     }).then(function(){
-      uf[1]({ health_status:'Green', progress_summary:'', blockers:'', next_actions:'', support_needed:'' });
-      updates.reload();
+      uf[1](emptyPulse());
+      updates.reload(); activity.reload();
     }).catch(function(e){
       er[1](userErrorMessage(e));
     }).finally(function(){
@@ -2725,7 +2874,7 @@ function ProjectDetailPage(p) {
             ${er[0] && html`<p style="color:var(--red)">${er[0]}</p>`}
           </div>`}
         </div>
-        <${ProjectUpdatePanel} updates=${updates.data || []} canUpdate=${canUpdate} form=${uf} setForm=${setU} onSubmit=${submitUpdate} busy=${bz[0]} />
+        <${ProjectUpdatePanel} updates=${updates.data || []} canUpdate=${canUpdate} form=${uf} setForm=${setU} onSubmit=${submitUpdate} busy=${bz[0]} system=${delivery.system} />
         <div class="card">
           <h2>Comments & activity</h2>
           <div style="display:flex;gap:8px;margin-bottom:10px" class="no-print">
@@ -3362,11 +3511,112 @@ function CockpitPage() {
 
 
 /* ================= Reviews (by pillar / lead) ================= */
+function ReviewPulseModal(p) {
+  var action = p.selection.action, row = p.selection.row;
+  var st = useState({ note:'', title:'Resolve delivery escalation - ' + row.project.project_id, committee:'Project Meeting', due_date:'' });
+  var busy = useState(false), error = useState(null);
+  var form = st[0];
+  var invalid = (action === 'Recovery required' && !form.note.trim()) ||
+    (action === 'Escalate' && (!form.title.trim() || !form.due_date));
+  function set(key, value){ st[1](function(old){var next=Object.assign({},old);next[key]=value;return next;}); }
+  function confirm(){
+    if (invalid) return;
+    busy[1](true); error[1](null);
+    p.onSave(action, form.note.trim(), {title:form.title.trim(), committee:form.committee, due_date:form.due_date})
+      .catch(function(e){ error[1](userErrorMessage(e)); busy[1](false); });
+  }
+  return html`<div class="modal-backdrop"><div class="modal">
+    <div class="pulse-card-head"><div><h2>${action}</h2><p class="muted small">${row.project.project_id} · ${row.project.project_name}</p></div><button class="btn secondary small" onClick=${p.onClose}>Close</button></div>
+    <${Field} label=${action === 'Acknowledge' ? 'Review note' : 'Required follow-up'} hint=${action === 'Acknowledge' ? 'optional' : 'required'}>
+      <textarea value=${form.note} onInput=${function(e){set('note',e.target.value)}} placeholder=${action === 'Recovery required' ? 'State the recovery expectation, owner and review date' : 'Add concise guidance for the project team'}></textarea><//>
+    ${action === 'Escalate' && html`<div>
+      <${Field} label="Decision title"><input type="text" value=${form.title} onInput=${function(e){set('title',e.target.value)}} /><//>
+      <div class="grid cols-2">
+        <${Field} label="Decision forum"><select value=${form.committee} onChange=${function(e){set('committee',e.target.value)}}>${DECISION_COMMITTEES.map(function(c){return html`<option key=${c}>${c}</option>`})}</select><//>
+        <${Field} label="Decision needed by"><input type="date" value=${form.due_date} onInput=${function(e){set('due_date',e.target.value)}} /><//>
+      </div>
+      <p class="muted small">This creates a linked, traceable item in the Decision Log.</p>
+    </div>`}
+    ${error[0] && html`<p style="color:var(--red)">${error[0]}</p>`}
+    <div class="plan-actions"><button class="btn" disabled=${busy[0] || invalid} onClick=${confirm}>${busy[0] ? 'Saving...' : action}</button><button class="btn secondary" onClick=${p.onClose}>Cancel</button></div>
+  </div></div>`;
+}
+function WeeklyReviewPanel(p) {
+  var filter = useState('Exceptions'), selection = useState(null), notice = useState(null), error = useState(null);
+  var allUpdates = p.updates || [], allItems = p.items || [];
+  var rows = (p.projects || []).map(function(project){
+    var projectUpdates = allUpdates.filter(function(u){return u.project_ref === project.id});
+    var latest = latestProjectUpdate(projectUpdates);
+    var itemRows = allItems.filter(function(w){return w.project_id === project.project_id});
+    var health = projectDeliveryHealth(project, itemRows, projectUpdates, p.deliverables[project.project_id]);
+    var age = latest ? daysSince(latest.update_week || latest.created_at) : null;
+    var stale = latest && age > 7;
+    var reviewStatus = latest ? (latest.review_status || 'Submitted') : 'Missing';
+    var exception = !latest || stale || (latest && latest.health_status !== 'Green') ||
+      (latest && (latest.support_needed || latest.decision_required)) ||
+      reviewStatus === 'Action required' || reviewStatus === 'Escalated';
+    var score = !latest ? 95 : stale ? 90 : latest.health_status === 'Red' ? 100 : latest.decision_required ? 98 :
+      latest.support_needed ? 85 : latest.health_status === 'Amber' ? 80 : reviewStatus === 'Submitted' ? 50 : 10;
+    return {project:project, latest:latest, health:health, age:age, stale:stale, reviewStatus:reviewStatus, exception:exception, score:score};
+  }).sort(function(a,b){return b.score-a.score || a.project.project_id.localeCompare(b.project.project_id)});
+  var submitted = rows.filter(function(r){return r.latest && r.age <= 7}).length;
+  var exceptions = rows.filter(function(r){return r.exception}).length;
+  var awaiting = rows.filter(function(r){return r.latest && r.reviewStatus === 'Submitted'}).length;
+  var missing = rows.filter(function(r){return !r.latest || r.stale}).length;
+  var visible = rows.filter(function(r){
+    if (filter[0] === 'Exceptions') return r.exception;
+    if (filter[0] === 'Awaiting review') return r.latest && r.reviewStatus === 'Submitted';
+    if (filter[0] === 'Missing / stale') return !r.latest || r.stale;
+    return true;
+  });
+  function review(action, note, decision){
+    var row = selection[0].row;
+    error[1](null);
+    return api.reviewProjectUpdate(row.latest.id, action, note, decision).then(function(result){
+      notice[1](action === 'Escalate' ? 'Escalation created in the Decision Log.' : 'Weekly Pulse marked ' + (result.review_status || action) + '.');
+      selection[1](null); p.onReload();
+    }).catch(function(e){
+      var msg = userErrorMessage(e);
+      if (String(msg).indexOf('review_project_update') >= 0) msg = 'Weekly Pulse review is not enabled in Supabase yet. Apply migration_13.sql, then retry.';
+      error[1](msg); throw new Error(msg);
+    });
+  }
+  return html`<div class="card">
+    <div class="review-toolbar"><div><h2>Weekly Review</h2><p class="muted small mb0">Exception-based review of the latest project delivery Pulses.</p></div><${Badge} color=${missing ? 'amber' : 'green'}>${submitted}/${rows.length} current<//></div>
+    <div class="review-kpis">
+      <div class="review-kpi" style="border-left-color:var(--green)"><strong>${submitted}</strong><span class="muted small">Current this week</span></div>
+      <div class="review-kpi" style="border-left-color:var(--red)"><strong>${exceptions}</strong><span class="muted small">Exceptions</span></div>
+      <div class="review-kpi" style="border-left-color:var(--amber)"><strong>${awaiting}</strong><span class="muted small">Awaiting review</span></div>
+      <div class="review-kpi"><strong>${missing}</strong><span class="muted small">Missing or stale</span></div>
+    </div>
+    <div class="review-toolbar no-print">
+      <div class="filters" style="margin-bottom:0"><select value=${filter[0]} onChange=${function(e){filter[1](e.target.value)}}><option>Exceptions</option><option>Awaiting review</option><option>Missing / stale</option><option>All projects</option></select></div>
+      <span class="muted small">Green Pulses can be acknowledged without a meeting.</span>
+    </div>
+    ${notice[0] && html`<p class="small" style="color:var(--green)">${notice[0]}</p>`}
+    ${error[0] && html`<p class="small" style="color:var(--red)">${error[0]}</p>`}
+    <div class="review-list">
+      ${visible.map(function(row){
+        var u = row.latest;
+        return html`<div class="review-row" key=${row.project.id}>
+          <div><div class="small muted">${row.project.project_id}</div>${u ? healthBadge(u.health_status) : html`<${Badge} color="red">Missing<//>`}<div class="small muted" style="margin-top:5px">${u ? (row.stale ? row.age + ' days old' : fmtDate(u.update_week || u.created_at)) : 'No Pulse submitted'}</div></div>
+          <div><b><${A} href=${'/projects/'+row.project.id}>${row.project.project_name}<//></b><div class="small muted">${projectManagerLabel(row.project)} · ${row.project.digital_pillar || 'Unassigned'}</div><div class="review-exception">${u && pulseReviewBadge(row.reviewStatus)}${u && u.support_needed && html`<${Badge} color="amber">Support requested<//>`}${u && u.decision_required && html`<${Badge} color="red">Decision requested<//>`}${row.stale && html`<${Badge} color="amber">Stale<//>`}</div></div>
+          <div class="review-row-summary">${u ? html`<div><b class="small">${u.progress_summary}</b>${u.blockers && html`<div class="small" style="margin-top:5px"><span class="muted">Blocker:</span> ${u.blockers}</div>`}${u.next_actions && html`<div class="small"><span class="muted">Next:</span> ${u.next_actions}${u.action_owner ? ' · ' + u.action_owner : ''}${u.action_due_date ? ' · ' + fmtDate(u.action_due_date) : ''}</div>`}</div>` : html`<span class="muted small">Open the project and ask the assigned Project Manager to submit this week's Pulse.</span>`}</div>
+          <div class="review-row-actions no-print">${u && row.reviewStatus === 'Submitted' ? html`<button class="btn secondary small" onClick=${function(){selection[1]({row:row,action:'Acknowledge'})}}>Acknowledge</button><button class="btn secondary small" onClick=${function(){selection[1]({row:row,action:'Recovery required'})}}>Recovery</button><button class="btn small" onClick=${function(){selection[1]({row:row,action:'Escalate'})}}>Escalate</button>` : html`<${A} href=${'/projects/'+row.project.id} class="btn secondary small">Open project<//>`}</div>
+        </div>`;
+      })}
+      ${!visible.length && html`<p class="muted small" style="padding:12px 0">No projects match this review filter.</p>`}
+    </div>
+    ${selection[0] && html`<${ReviewPulseModal} selection=${selection[0]} onClose=${function(){selection[1](null)}} onSave=${review} />`}
+  </div>`;
+}
 function ReviewsPage() {
   var projects = useAsync(api.listProjects, []);
   var ideas = useAsync(api.listIdeas, []);
   var docs = useAsync(api.listDeliverablesLight, []);
-  if (projects.loading || ideas.loading || docs.loading) return html`<p>Loading…</p>`;
+  var workItems = useAsync(api.listAllProjectWorkItems, []);
+  var updates = useAsync(api.listAllProjectUpdates, []);
+  if (projects.loading || ideas.loading || docs.loading || workItems.loading || updates.loading) return html`<p>Loading…</p>`;
   var P = (projects.data||[]).filter(function(p){return (p.current_stage||'').indexOf('G5') !== 0});
   var atG1 = (ideas.data||[]).filter(function(i){return i.stage === 'G1 Approval'});
   var deliverableMap = projectDeliverableMap(P, ideas.data || [], docs.data);
@@ -3376,10 +3626,12 @@ function ReviewsPage() {
   pillars.sort(comparePillars);
   return html`<div>
     <div class="topbar">
-      <div><h1>Reviews</h1>
-      <p class="muted small mb0">Pillar SteerCo preparation — projects grouped by pillar and lead, with initiatives awaiting G1.</p></div>
+      <div><h1>Weekly Review & governance</h1>
+      <p class="muted small mb0">Review delivery by exception, then prepare pillar and gate governance.</p></div>
       <button class="btn secondary no-print" onClick=${function(){window.print()}}>🖨 Print</button>
     </div>
+    <${WeeklyReviewPanel} projects=${P} items=${workItems.data || []} updates=${updates.data || []} deliverables=${deliverableMap} onReload=${updates.reload} />
+    <div style="margin:22px 0 10px"><h2>Pillar & gate reviews</h2><p class="muted small mb0">Existing SteerCo preparation, grouped by pillar and Project Manager.</p></div>
     ${!pillars.length && html`<div class="card"><p class="muted">No active projects or G1 initiatives yet.</p></div>`}
     ${pillars.map(function(pillar) {
       var inP = P.filter(function(p){return (p.digital_pillar||'Unassigned') === pillar});
@@ -3725,7 +3977,7 @@ function App() {
         ${profile.role === 'requester' ? navLink('/my-ideas','home','My Ideas') : navLink('/ideas','idea','Ideation Board')}
         ${navLink('/ideas/new','plus','Submit Idea')}
         ${isPMTT && navLink('/decisions','decision','Decision Log')}
-        ${isPMTT && navLink('/reviews','reviews','Reviews')}
+        ${isPMTT && navLink('/reviews','reviews','Weekly Review')}
         ${(isPMTT || profile.role==='project_lead') && navLink('/projects','projects','Projects')}
         ${isPMTT && navLink('/import-export','sync','SmartSheet I/O')}
         ${html`<a href="#/notifications" class=${route==='/notifications'?'active':''}><${NavIcon} name="bell" /> <span>Notifications${unread > 0 && html`<span class="notif-dot">${unread}</span>`}</span></a>`}
