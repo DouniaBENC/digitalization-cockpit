@@ -72,6 +72,15 @@ table.data tr:hover td{background:#faf9f6}
 .delivery-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
 .delivery-card{background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px}
 .delivery-card .num{font-size:24px;font-weight:700;line-height:1}
+.deliverables-list{border-top:1px solid var(--border);margin-top:10px}
+.deliverable-row{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)}
+.deliverable-row:last-child{border-bottom:none;padding-bottom:0}
+.deliverable-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-weight:600}
+.deliverable-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;color:var(--muted);font-size:12px}
+.deliverable-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
+.deliverable-pills{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:7px}
+.alert-line .deliverable-pills,table .deliverable-pills{margin-top:0}
+@media(max-width:720px){.deliverable-row{grid-template-columns:minmax(0,1fr)}.deliverable-actions{justify-content:flex-start}}
 .timeline{display:grid;gap:10px}
 .milestone{border:1px solid var(--border);border-radius:8px;background:#fff;overflow:hidden}
 .milestone-head{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;padding:12px;background:#faf9f6;border-bottom:1px solid var(--border)}
@@ -179,7 +188,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.9';
+var APP_VERSION = '2026.07.22.10';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -287,8 +296,8 @@ function chCompleteness(d){ return completeness(d, CH_SECTIONS); }
 function g1Criteria(i, bc, ch) {
   var bcc = (bc && bc.content) || {}, chc = (ch && ch.content) || {};
   return [
-    { label:'Business Case complete enough for decision', ok:bc ? bcCompletenessLean(bc).pct >= GATE_READY_PCT : false },
-    { label:'Project Charter complete enough for decision', ok:ch ? chCompletenessLean(ch).pct >= GATE_READY_PCT : false },
+    { label:'Business Case complete enough for decision', ok:internalDeliverableReady('bc', bc) },
+    { label:'Project Charter complete enough for decision', ok:internalDeliverableReady('pc', ch) },
     { label:'Explicit recommendation (Go / No-Go / Rework / Hold)', ok:!!(bc && bc.recommendation) },
     { label:'Rough budget / effort estimate documented', ok:!!bcc.estimated_cost },
     { label:'Benefits and success measures documented', ok:!!(bcc.expected_benefits && (bcc.kpis||[]).length) },
@@ -303,24 +312,117 @@ function conversionCriteria(i, decisions) {
     { label:'A Go decision is logged for this initiative in the Decision Log', ok:!!g1 },
     { label:'Committee decision logged', ok:!!g1 }];
 }
-function projectAlerts(p, hasInAppCharter) {
+function normalizeDeliverableStatus(raw, exists) {
+  var s = String(raw || '').trim().toLowerCase();
+  if (!exists || !s || s === 'not created' || s === 'missing') return 'Not started';
+  if (s.indexOf('approv') >= 0) return 'Approved';
+  if (s.indexOf('ready') >= 0) return 'Ready for Gate';
+  if (s.indexOf('rework') >= 0) return 'Rework';
+  if (s.indexOf('review') >= 0 || s.indexOf('created') >= 0) return 'In Review';
+  if (s.indexOf('draft') >= 0) return 'Draft';
+  return raw;
+}
+function deliverableStatusBucket(status) {
+  var s = normalizeDeliverableStatus(status, true);
+  if (s === 'Approved' || s === 'Ready for Gate') return 'ready';
+  if (s === 'Not started') return 'missing';
+  if (s === 'Rework') return 'rework';
+  return 'working';
+}
+function ideaRequiresDeliverables(idea, project) {
+  if (project) return true;
+  return !!(idea && ['L1 Qualified','L2 BC/Charter','G1 Approval','Converted'].indexOf(idea.stage) >= 0);
+}
+function internalDeliverableReady(kind, doc) {
+  if (!doc) return false;
+  var status = normalizeDeliverableStatus(doc.status, true);
+  if (deliverableStatusBucket(status) === 'ready') return true;
+  var comp = kind === 'bc' ? bcCompletenessLean(doc) : chCompletenessLean(doc);
+  return comp.pct >= GATE_READY_PCT;
+}
+function latestIdeaDoc(rows, ideaId) {
+  return (rows || []).filter(function(d){ return d.idea_id === ideaId; })
+    .sort(function(a,b){ return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0); })[0] || null;
+}
+function linkedIdeaForProject(project, ideas) {
+  return (ideas || []).find(function(i){
+    return i.idea_id === project.linked_initiative_id || i.linked_project_id === project.project_id;
+  }) || null;
+}
+function resolveRequiredDeliverables(idea, project, bc, charter) {
+  var requiredNow = ideaRequiresDeliverables(idea, project);
+  var externalPCStatus = project && project.charter_status;
+  var externalPCExists = !!(project && ((externalPCStatus && normalizeDeliverableStatus(externalPCStatus, true) !== 'Not started') || project.charter_file));
+  function make(kind, doc, externalStatus, externalExists) {
+    var isBC = kind === 'bc';
+    var internalExists = !!doc;
+    var exists = internalExists || externalExists;
+    var internalStatus = internalExists ? normalizeDeliverableStatus(doc.status, true) : null;
+    var normalizedExternal = externalExists ? normalizeDeliverableStatus(externalStatus || 'In Review', true) : 'Not started';
+    var comp = internalExists ? (isBC ? bcCompletenessLean(doc) : chCompletenessLean(doc)) : null;
+    var ready = internalExists
+      ? internalDeliverableReady(kind, doc)
+      : normalizedExternal === 'Approved';
+    var conflict = internalExists && externalExists
+      && deliverableStatusBucket(internalStatus) !== deliverableStatusBucket(normalizedExternal)
+      && deliverableStatusBucket(normalizedExternal) !== 'missing';
+    var syncNeeded = !!(project && internalExists && !externalExists);
+    var status = internalExists ? internalStatus : externalExists ? normalizedExternal : requiredNow ? 'Not started' : 'Planned at L1';
+    var ref = internalExists ? (isBC ? doc.business_case_id : doc.charter_id) : null;
+    return {
+      key:kind, short:isBC ? 'BC' : 'PC', title:isBC ? 'Business Case' : 'Project Charter',
+      status:status, source:internalExists ? 'Digital Pulse' : externalExists ? 'Smartsheet' : '—',
+      sourceDetail:internalExists && externalExists ? 'Digital Pulse + Smartsheet' : internalExists ? 'Digital Pulse' : externalExists ? 'Smartsheet' : '—',
+      version:internalExists ? doc.version : null, reference:ref, updatedAt:internalExists ? doc.updated_at : project && project.imported_at,
+      pct:comp ? comp.pct : null, ready:ready, requiredNow:requiredNow, missing:requiredNow && !exists,
+      conflict:conflict, syncNeeded:syncNeeded, externalStatus:externalStatus || null,
+      url:idea && internalExists ? '/ideas/' + idea.id + (isBC ? '/business-case' : '/charter') : null,
+      externalFile:!isBC && project && project.charter_file ? project.charter_file : null,
+      owner:'Digital Transformation Team'
+    };
+  }
+  return [make('bc', bc, null, false), make('pc', charter, externalPCStatus, externalPCExists)];
+}
+function ideaDeliverables(idea, docs) {
+  docs = docs || {};
+  return resolveRequiredDeliverables(idea, null, latestIdeaDoc(docs.bcs, idea.id), latestIdeaDoc(docs.charters, idea.id));
+}
+function projectDeliverables(project, ideas, docs) {
+  docs = docs || {};
+  var idea = linkedIdeaForProject(project, ideas);
+  var charter = (docs.charters || []).find(function(ch){ return ch.smartsheet_project_id === project.project_id; })
+    || (idea && latestIdeaDoc(docs.charters, idea.id)) || null;
+  var bc = idea ? latestIdeaDoc(docs.bcs, idea.id) : null;
+  return resolveRequiredDeliverables(idea, project, bc, charter);
+}
+function projectDeliverableMap(projects, ideas, docs) {
+  var map = {};
+  (projects || []).forEach(function(project){ map[project.project_id] = projectDeliverables(project, ideas || [], docs); });
+  return map;
+}
+function deliverableIssues(deliverables) {
+  var out = [];
+  (deliverables || []).forEach(function(d){
+    if (d.missing) out.push({type:'governance',msg:d.title + ' missing',deliverable:d.key});
+    else if (d.conflict) out.push({type:'governance',msg:d.short + ' source conflict: review required',deliverable:d.key});
+    else if (d.requiredNow && !d.ready) out.push({type:'governance',msg:d.title + ' requires review',deliverable:d.key});
+  });
+  return out;
+}
+function projectAlerts(p, deliverables) {
   var a = [], today = new Date();
   var closed = (p.current_stage||'').indexOf('G5') === 0 || (p.current_stage||'').indexOf('S4') === 0;
   if (p.planned_end_date && new Date(p.planned_end_date) < today && !closed) a.push({type:'planning',msg:'Planned end date passed'});
   if (p.planned_start_date && new Date(p.planned_start_date) < today && (p.current_stage||'').indexOf('S1') === 0) a.push({type:'planning',msg:'Started per plan but still in Scoping'});
   if (p.capex_keur == null && p.current_year_budget == null) a.push({type:'budget',msg:'No CAPEX / budget data'});
-  if (!hasInAppCharter && (!p.charter_status || p.charter_status === 'Not created')) a.push({type:'governance',msg:'Charter missing'});
+  if (Array.isArray(deliverables)) a = a.concat(deliverableIssues(deliverables));
+  else if (!deliverables && (!p.charter_status || p.charter_status === 'Not created')) a.push({type:'governance',msg:'Project Charter missing'});
   if (p.it_demand_status === 'Not created') a.push({type:'governance',msg:'IT demand not created'});
   if (p.ar_status === 'Not created') a.push({type:'governance',msg:'AR not created'});
   var na = (p.needs_attention||'').toLowerCase();
   if (na.indexOf('budget') >= 0) a.push({type:'budget',msg:'Flagged: budget attention'});
   if (na.indexOf('planning') >= 0) a.push({type:'planning',msg:'Flagged: planning attention'});
   return a;
-}
-function charterMap(charters) {
-  var m = {};
-  (charters || []).forEach(function(ch){ if (ch.smartsheet_project_id) m[ch.smartsheet_project_id] = ch; });
-  return m;
 }
 function isPriorityProject(p){ return (p.needs_attention||'').toLowerCase().indexOf('priority') >= 0; }
 function isQuickWinProject(p){ return (p.needs_attention||'').toLowerCase().indexOf('quick win') >= 0; }
@@ -394,8 +496,8 @@ function daysSince(d) {
   if (!d) return null;
   return Math.floor((new Date() - new Date(d)) / 86400000);
 }
-function projectDeliveryHealth(p, items, updates, hasInAppCharter) {
-  var reasons = projectAlerts(p, hasInAppCharter).map(function(a){ return a.msg; });
+function projectDeliveryHealth(p, items, updates, deliverables) {
+  var reasons = projectAlerts(p, deliverables).map(function(a){ return a.msg; });
   var ws = projectWorkSummary(items);
   var latest = latestProjectUpdate(updates);
   if (ws.overdue.length) reasons.push(ws.overdue.length + ' overdue milestone/activity item(s)');
@@ -534,7 +636,9 @@ var api = {
     });
   },
   createProjectUpdate: function(f){ return sb.from('project_updates').insert(f).select().single().then(one); },
-  listChartersLight: function(){ return sb.from('project_charters').select('id, idea_id, charter_id, version, status, smartsheet_project_id').then(one); },
+  listBusinessCasesLight: function(){ return sb.from('business_cases').select('*').order('updated_at',{ascending:false}).then(one); },
+  listChartersLight: function(){ return sb.from('project_charters').select('*').order('updated_at',{ascending:false}).then(one); },
+  listDeliverablesLight: function(){ return Promise.all([api.listBusinessCasesLight(), api.listChartersLight()]).then(function(r){ return {bcs:r[0], charters:r[1]}; }); },
   listMyDocs: function(){ return Promise.all([
     sb.from('business_cases').select('*').then(one),
     sb.from('project_charters').select('*').then(one)
@@ -840,6 +944,49 @@ function Progress(p) {
   var col = p.pct >= 80 ? 'var(--green)' : p.pct >= 40 ? 'var(--amber)' : 'var(--red)';
   return html`<div class="progress"><div style="width:${p.pct}%;background:${col}"></div></div>`;
 }
+function deliverableColor(d) {
+  if (d.conflict || d.missing || d.status === 'Rework') return 'red';
+  if (d.ready) return 'green';
+  if (!d.requiredNow || d.status === 'Not started') return 'gray';
+  return 'amber';
+}
+function DeliverablePills(p) {
+  return html`<div class="deliverable-pills">
+    ${(p.deliverables || []).map(function(d){
+      var label = d.short + ' ' + (d.conflict ? 'Review required' : d.status);
+      return html`<${Badge} key=${d.key} color=${deliverableColor(d)}>${label}<//>`;
+    })}
+  </div>`;
+}
+function DeliverablesPanel(p) {
+  var list = p.deliverables || [];
+  return html`<div class="card">
+    <div class="plan-toolbar">
+      <div><h2 class="mb0">Required deliverables</h2><div class="small muted">Digital Pulse is the governance source of truth; Smartsheet supplements project data and synchronization.</div></div>
+      <${Badge} color=${list.every(function(d){return d.ready}) ? 'green' : 'amber'}>${list.filter(function(d){return d.ready}).length}/${list.length} ready<//>
+    </div>
+    <div class="deliverables-list">
+      ${list.map(function(d){ return html`<div class="deliverable-row" key=${d.key}>
+        <div>
+          <div class="deliverable-title"><span>${d.title}</span><${Badge} color="gray">${d.short}<//><${Badge} color=${deliverableColor(d)}>${d.status}<//></div>
+          <div class="deliverable-meta">
+            <span>${d.reference || 'Not yet created'}${d.version ? ' · ' + d.version : ''}</span>
+            ${d.sourceDetail !== '—' && html`<span>· ${d.sourceDetail}</span>`}
+            ${d.pct != null && html`<span>· ${d.pct}% complete</span>`}
+            ${d.updatedAt && html`<span>· updated ${fmtDate(d.updatedAt)}</span>`}
+          </div>
+        </div>
+        <div class="deliverable-actions">
+          ${d.conflict && html`<${Badge} color="red">Review required<//>`}
+          ${d.syncNeeded && html`<${Badge} color="amber">Update Smartsheet<//>`}
+          ${d.ready && html`<${Badge} color="green">Gate ready<//>`}
+          ${d.url && html`<${A} href=${d.url} class="btn secondary small">Open<//>`}
+          ${d.externalFile && /^https?:\/\//i.test(d.externalFile) && html`<a class="btn secondary small" href=${d.externalFile} target="_blank" rel="noreferrer">External file</a>`}
+        </div>
+      </div>`; })}
+    </div>
+  </div>`;
+}
 function RoadmapNote(){ return html`<div class="roadmap-note">🔮 <b>Roadmap:</b> ${ROADMAP_NOTE}</div>`; }
 function PulseLogo() {
   return html`<svg class="pulse-logo" viewBox="0 0 64 64" aria-label="Digital Pulse logo">
@@ -989,7 +1136,7 @@ function IdeaPortalLanding() {
         <ul>
           <li>Submit a new idea in about 5 minutes</li>
           <li>Track triage, qualification and committee outcome</li>
-          <li>Complete the starter kit only if the idea is qualified</li>
+          <li>Provide clarifications while the Digital Team prepares the decision kit</li>
         </ul>
       </div>
       <div class="cta-row">
@@ -1057,7 +1204,7 @@ function IdeaForm(p) {
         <ol style="text-align:left;font-size:13.5px;color:var(--muted);max-width:440px;margin:0 auto 18px;padding-left:20px">
           <li>The Digital Team reviews it within a few days.</li>
           <li>You are notified at every step — here and by email.</li>
-          <li>If it is qualified, you unlock your starter kit: a guided Business Case and Project Charter.</li>
+          <li>If it is qualified, the Digital Team prepares the Business Case and Project Charter and may ask you to clarify business inputs.</li>
         </ol>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
           <button class="btn" onClick=${function(){nav('/my-ideas')}}>📌 Track my ideas</button>
@@ -1115,7 +1262,7 @@ function HelpGuide() {
   var steps = [
     ['💡', 'Submit your idea', 'Takes about 5 minutes. Plain language, no jargon needed — describe the problem, who it affects and the benefit you expect. Estimates and "to be confirmed" are fine.'],
     ['🔍', 'We triage it', 'The Digital Team checks scope, duplicates and fit within a few days. You are notified at every step.'],
-    ['🧰', 'You complete your kit', 'If your idea is qualified, you get edit access to a guided Business Case and Project Charter (~15 minutes each). They are pre-filled from your submission.'],
+    ['🧰', 'We prepare the decision kit', 'If your idea is qualified, the Digital Team prepares the Business Case and Project Charter from your submission and asks you only for needed clarifications.'],
     ['⚖️', 'A committee decides', 'Your initiative is presented at the right SteerCo with your documents. Outcome: Go, Rework, Hold or No-Go — always with a reason.'],
     ['🚀', 'It becomes a project', 'Approved ideas are converted into official projects. Follow the status of your idea on this board and in your notifications at any time.'] ];
   return html`<div class="card no-print" style="border-left:4px solid var(--accent)">
@@ -1135,6 +1282,7 @@ function HelpGuide() {
 
 function IdeationBoard(p) {
   var ideas = useAsync(api.listIdeas, []);
+  var docs = useAsync(api.listDeliverablesLight, []);
   var vw = useState('kanban'), view = vw[0];
   var fl = useState({pillar:'',stage:'',committee:'',flag:'',q:''});
   var flt = fl[0]; function setF(k,v){ fl[1](function(s){ var n=Object.assign({},s); n[k]=v; return n; }); }
@@ -1148,11 +1296,12 @@ function IdeationBoard(p) {
         (!flt.q || (i.title+' '+i.idea_id).toLowerCase().indexOf(flt.q.toLowerCase()) >= 0);
     });
   }, [ideas.data, flt]);
-  if (ideas.loading) return html`<p>Loading…</p>`;
+  if (ideas.loading || docs.loading) return html`<p>Loading…</p>`;
   if (ideas.error) return html`<p style="color:var(--red)">${userErrorMessage(ideas.error)}</p>`;
 
   function KCard(props) {
     var i = props.i;
+    var deliverables = ideaDeliverables(i, docs.data);
     return html`<div class="kcard" onClick=${function(){nav('/ideas/'+i.id)}}>
       <span class="muted small">${i.idea_id}</span>
       <div class="title">${i.title}</div>
@@ -1162,6 +1311,7 @@ function IdeationBoard(p) {
         ${i.priority && html`<${Badge} color="red">Priority<//>`}
         ${triageOverdue(i) && html`<${Badge} color="amber">⏰ ${daysInTriage(i)}d in triage<//>`}
       </div>
+      <${DeliverablePills} deliverables=${deliverables} />
       <div class="small muted" style="margin-top:6px">${i.owner && i.owner.name ? 'Owner: '+i.owner.name : 'No owner'} · ${fmtDate(i.updated_at)}</div>
     </div>`;
   }
@@ -1191,16 +1341,17 @@ function IdeationBoard(p) {
           ${items.map(function(i){return html`<${KCard} key=${i.id} i=${i} />`})}</div>`; })}
     </div>`}
     ${view === 'table' && html`<div class="card" style="overflow-x:auto"><table class="data">
-      <thead><tr><th>ID</th><th>Title</th><th>Stage</th><th>Pillar</th><th>Idea Owner</th><th>Flags</th><th>Committee</th><th>Updated</th></tr></thead>
+      <thead><tr><th>ID</th><th>Title</th><th>Stage</th><th>BC / PC</th><th>Pillar</th><th>Idea Owner</th><th>Flags</th><th>Committee</th><th>Updated</th></tr></thead>
       <tbody>${filtered.map(function(i){
         return html`<tr key=${i.id}>
           <td><${A} href=${'/ideas/'+i.id}>${i.idea_id}<//></td>
           <td><${A} href=${'/ideas/'+i.id}>${i.title}<//></td>
           <td><${StageBadge} stage=${i.stage} /></td>
+          <td><${DeliverablePills} deliverables=${ideaDeliverables(i, docs.data)} /></td>
           <td>${i.digital_pillar||'—'}</td><td>${i.requester&&i.requester.name}</td>
           <td>${i.quick_win&&html`<${Badge} color="green">QW<//> `}${i.priority&&html`<${Badge} color="red">P<//> `}${triageOverdue(i)&&html`<${Badge} color="amber">⏰<//>`}</td>
           <td>${i.committee_target||'—'}</td><td>${fmtDate(i.updated_at)}</td></tr>`; })}
-      ${!filtered.length && html`<tr><td colSpan="8" class="muted">No ideas match the filters.</td></tr>`}
+      ${!filtered.length && html`<tr><td colSpan="9" class="muted">No ideas match the filters.</td></tr>`}
       </tbody></table></div>`}
     ${view === 'archive' && html`<div class="card" style="overflow-x:auto">
       <h2>Archive — rejected & on-hold ideas</h2>
@@ -1255,7 +1406,7 @@ var JOURNEY_STEPS = [
   { stage:'L0 Submitted', label:'Submitted' },
   { stage:'L0 Triage', label:'Triage' },
   { stage:'L1 Qualified', label:'Qualified' },
-  { stage:'L2 BC/Charter', label:'Your kit' },
+  { stage:'L2 BC/Charter', label:'Decision kit' },
   { stage:'G1 Approval', label:'Committee' },
   { stage:'Converted', label:'Project' }];
 function journeyIndex(stage) {
@@ -1294,9 +1445,7 @@ function MyIdeasPage(p) {
     if (i.stage === 'L0 Triage') return html`<span>🔍 Being reviewed by the Digital Team — no action needed from you right now.</span>`;
     if (i.stage === 'L1 Qualified' || i.stage === 'L2 BC/Charter') {
       var bp = bc ? bcCompletenessLean(bc).pct : 0, cp = ch ? chCompletenessLean(ch).pct : 0;
-      return html`<span>🧰 <b>Action needed:</b> complete your starter kit —
-        ${' '}<${A} href=${'/ideas/'+i.id+'/business-case'}>Business Case<//> (${bp}%) and
-        ${' '}<${A} href=${'/ideas/'+i.id+'/charter'}>Project Charter<//> (${cp}%).</span>`;
+      return html`<span><b>Decision kit in preparation:</b> the Digital Team is preparing the Business Case (${bp}%) and Project Charter (${cp}%). You may be contacted for clarification.</span>`;
     }
     if (i.stage === 'G1 Approval') return html`<span>⚖️ Awaiting the committee decision (${i.committee_target || 'committee to be confirmed'}). You will be notified of the outcome.</span>`;
     if (i.stage === 'Converted') return html`<span>🚀 Your idea became project <b>${i.linked_project_id}</b>. Congratulations!</span>`;
@@ -1312,8 +1461,9 @@ function MyIdeasPage(p) {
       <${A} href="/ideas/new" class="btn">🚀 Submit my first idea<//>
     </div>`}
     ${mine.map(function(i) {
-      var bc = bcs.filter(function(b){ return b.idea_id === i.id; })[0];
-      var ch = chs.filter(function(c){ return c.idea_id === i.id; })[0];
+      var bc = latestIdeaDoc(bcs, i.id);
+      var ch = latestIdeaDoc(chs, i.id);
+      var deliverables = resolveRequiredDeliverables(i, null, bc, ch);
       var action = nextAction(i, bc, ch);
       return html`<div class="card" key=${i.id}>
         <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start">
@@ -1322,6 +1472,7 @@ function MyIdeasPage(p) {
           <${A} href=${'/ideas/'+i.id} class="btn secondary small">View details<//>
         </div>
         <${IdeaStepper} idea=${i} />
+        <${DeliverablePills} deliverables=${deliverables} />
         ${action && html`<div style="background:#f7f8fb;border-radius:8px;padding:10px 12px;font-size:13px">${action}</div>`}
       </div>`; })}
   </div>`;
@@ -1348,8 +1499,9 @@ function IdeaDetail(p) {
   var i = idea.data;
   var isPMTT = auth.isPMTT, isPM = auth.isPM;
   var ideaDecisions = (decisions.data||[]).filter(function(d){return d.related_id === i.idea_id});
-  var bcReady = !!(bc.data && bcCompletenessLean(bc.data).pct >= GATE_READY_PCT);
-  var chReady = !!(ch.data && chCompletenessLean(ch.data).pct >= GATE_READY_PCT);
+  var deliverables = resolveRequiredDeliverables(i, null, bc.data, ch.data);
+  var bcReady = deliverables[0].ready;
+  var chReady = deliverables[1].ready;
   var docsReady = bcReady && chReady;
 
   function reloadAll(){ idea.reload(); bc.reload(); ch.reload(); activity.reload(); decisions.reload(); }
@@ -1415,13 +1567,7 @@ function IdeaDetail(p) {
           <${Info} label="Systems Involved" value=${i.interface_systems||'—'} />
           <${Info} label="Risks / Constraints" value=${i.risks_challenges||'—'} multiline=${true} />
         </div>
-        <div class="card">
-          <h2>Governance Documents</h2>
-          ${bc.data ? html`<p>📄 <${A} href=${'/ideas/'+i.id+'/business-case'}>Business Case ${bc.data.business_case_id} (${bc.data.version})<//> — <${Badge} color=${bc.data.status==='Ready for Gate'?'green':'gray'}>${bc.data.status}<//> <${Badge} color=${bcReady?'green':'amber'}>${bcReady?'Gate ready':bcCompletenessLean(bc.data).pct + '%'}<//></p>`
-            : html`<p class="muted">Business Case v0 will be created automatically at L1 qualification.</p>`}
-          ${ch.data ? html`<p>📄 <${A} href=${'/ideas/'+i.id+'/charter'}>Project Charter ${ch.data.charter_id} (${ch.data.version})<//> — <${Badge} color=${ch.data.status==='Ready for Gate'?'green':'gray'}>${ch.data.status}<//> <${Badge} color=${chReady?'green':'amber'}>${chReady?'Gate ready':chCompletenessLean(ch.data).pct + '%'}<//></p>`
-            : html`<p class="muted">Project Charter v0 will be created automatically at L1 qualification.</p>`}
-        </div>
+        <${DeliverablesPanel} deliverables=${deliverables} />
         <div class="card">
           <h2>Decisions</h2>
           ${ideaDecisions.length ? ideaDecisions.map(function(d){
@@ -1462,6 +1608,7 @@ function IdeaDetail(p) {
       <p class="small muted">The Digital Team confirms there is enough substance to prepare governance materials.</p>
       <button class="btn" onClick=${function(){moveStage('L2 BC/Charter')}} disabled=${bz[0]}>Confirm move to L2</button><//>`}
     ${modal==='g1' && html`<${Modal} title="Ready for G1 Approval" onClose=${function(){setModal(null)}}>
+      <${DeliverablePills} deliverables=${deliverables} />
       <${Checklist} items=${g1Criteria(i, bc.data, ch.data)} />
       ${!docsReady && html`<p class="small" style="color:var(--red)">⛔ The Business Case and the Project Charter are mandatory deliverables for G1. Both must be gate-ready (${GATE_READY_PCT}% of required items) before the initiative can be sent to the committee.
         ${!bcReady && html`<br />→ <${A} href=${'/ideas/'+i.id+'/business-case'}>Complete the Business Case<//>`}
@@ -1477,6 +1624,7 @@ function IdeaDetail(p) {
 
 function GateBox(p) {
   var i = p.i, criteria = g1Criteria(i, p.bc, p.ch);
+  var deliverables = resolveRequiredDeliverables(i, null, p.bc, p.ch);
   var missing = criteria.filter(function(x){return !x.ok});
   var cm = useState(i.committee_target || 'Pillar SteerCo');
   var note = useState('');
@@ -1498,6 +1646,7 @@ function GateBox(p) {
   }
   return html`<div class="card" style="border-left:4px solid var(--purple)">
     <h2>⚖️ G1 Gate decision — ${cm[0]}</h2>
+    <${DeliverablePills} deliverables=${deliverables} />
     ${missing.length
       ? html`<p class="small" style="color:var(--amber)">Readiness gaps (${missing.length}): ${missing.map(function(x){return x.label}).join(' · ')}</p>`
       : html`<p class="small" style="color:var(--green)">✅ All readiness criteria met.</p>`}
@@ -1761,9 +1910,9 @@ function ApprovalsPanel(p) {
 function LeanDocEditor(p) {
   var doc = p.doc, cfg = p.cfg;
   var isPMTT = p.auth.isPMTT;
-  var isOwnerKit = !isPMTT && p.idea.requester_id === p.auth.profile.id;
-  var canEdit = isPMTT || isOwnerKit;
-  function canEditItem(item) { return isPMTT || (isOwnerKit && !item.pmOnly); }
+  var isIdeaOwner = !isPMTT && p.idea.requester_id === p.auth.profile.id;
+  var canEdit = isPMTT;
+  function canEditItem() { return isPMTT; }
   var init = { status: doc.status, content: Object.assign({}, doc.content || {}) };
   cfg.sections.forEach(function(sec){ (sec.fields||[]).forEach(function(fl){
     if (fl.key.indexOf('col:') === 0) init[fl.key.slice(4)] = doc[fl.key.slice(4)] || ''; }); });
@@ -1775,9 +1924,7 @@ function LeanDocEditor(p) {
   var versions = useAsync(function(){ return api.listVersions(p.docType, doc.id); }, [doc.id]);
   var merged = Object.assign({}, doc, f, { content: f.content });
   var comp = p.completeness(merged);
-  var ownerComp = leanCompletenessFor(cfg, merged, function(item){ return !item.pmOnly; });
-  var actionComp = isOwnerKit ? ownerComp : comp;
-  if (isOwnerKit) comp = ownerComp;
+  var actionComp = comp;
   var readiness = comp.pct >= GATE_READY_PCT;
 
   function save(newVersion) {
@@ -1810,7 +1957,7 @@ function LeanDocEditor(p) {
         : fl.ta
           ? html`<textarea value=${v} onInput=${on} disabled=${!fieldCanEdit} placeholder=${'[' + (fl.hint||'') + ']'}></textarea>`
           : html`<input type="text" value=${v} onInput=${on} disabled=${!fieldCanEdit} placeholder=${'[' + (fl.hint||'') + ']'} />`}
-      ${fl.pmOnly && isOwnerKit && html`<p class="small muted" style="margin:4px 0 0">Completed by Digital Team / Program Manager.</p>`}
+      ${!fieldCanEdit && html`<p class="small muted" style="margin:4px 0 0">Managed by Digital Transformation Team / Program Manager.</p>`}
     <//>`;
   }
 
@@ -1826,14 +1973,14 @@ function LeanDocEditor(p) {
       </div>
     </div>
     <${RoadmapNote} />
-    ${isOwnerKit && html`<div class="roadmap-note" style="background:var(--green-soft);border-color:var(--green);color:#14532d">
-      🧰 <b>Idea owner kit:</b> ${cfg.guide} The Digital Team will review and challenge the content.
+    ${isIdeaOwner && html`<div class="roadmap-note" style="background:var(--green-soft);border-color:var(--green);color:#14532d">
+      <b>Idea Owner view:</b> This document is prepared and maintained by the Digital Transformation Team. Your original submission remains the business input baseline; the team may contact you for clarification.
     </div>`}
     <div class="card no-print">
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:220px">
-          <div class="small muted" style="margin-bottom:4px">${isOwnerKit ? 'Your input' : 'Governance completeness'}: ${actionComp.done}/${actionComp.total} required items
-            ${' '}<${Badge} color=${isOwnerKit ? (actionComp.pct >= 100 ? 'green' : 'amber') : (readiness ? 'green' : 'amber')}>${isOwnerKit ? (actionComp.pct >= 100 ? 'Input complete' : 'Input needed') : (readiness ? 'Gate ready' : 'Not gate ready')}<//></div>
+          <div class="small muted" style="margin-bottom:4px">Governance completeness: ${actionComp.done}/${actionComp.total} required items
+            ${' '}<${Badge} color=${readiness ? 'green' : 'amber'}>${readiness ? 'Gate ready' : 'Not gate ready'}<//></div>
           <${Progress} pct=${actionComp.pct} />
         </div>
         <${Field} label="Status">
@@ -2221,8 +2368,7 @@ function ProjectDetailPage(p) {
   var decisions = useAsync(api.listDecisions, [p.id]);
   var activity = useAsync(function(){ return api.listActivity('Project', p.id); }, [p.id]);
   var cm = useState(''), na = useState(null), bz = useState(false), er = useState(null);
-  var chartersL = useAsync(api.listChartersLight, [p.id]);
-  var bcsL = useAsync(function(){ return sb.from('business_cases').select('id, idea_id, business_case_id, version, status, content, recommendation').then(one); }, [p.id]);
+  var deliverableDocs = useAsync(api.listDeliverablesLight, [p.id]);
   var workItems = useAsync(function(){
     return project.data ? api.listProjectWorkItems(project.data.project_id) : Promise.resolve([]);
   }, [p.id, project.data && project.data.project_id]);
@@ -2231,7 +2377,7 @@ function ProjectDetailPage(p) {
   }, [p.id, project.data && project.data.id]);
   var uf = useState({ health_status:'Green', progress_summary:'', blockers:'', next_actions:'', support_needed:'' });
   var wi = useState(null);
-  if (project.loading) return html`<div class="card" style="max-width:620px">
+  if (project.loading || deliverableDocs.loading) return html`<div class="card" style="max-width:620px">
     <h2>Loading project workspace…</h2>
     <p class="muted small">Project ID: ${p.id}</p>
     <p class="muted small">App version: v${APP_VERSION}. This request stops automatically if Supabase does not answer.</p>
@@ -2248,15 +2394,13 @@ function ProjectDetailPage(p) {
   </div>`;
   var pr = project.data;
   if (!pr) return html`<p class="muted">Project not found. <${A} href="/projects">← Back to projects<//></p>`;
-  var linkedIdea = (ideas.data || []).find(function(i){ return i.idea_id === pr.linked_initiative_id || i.linked_project_id === pr.project_id; });
-  var prCharter = (chartersL.data || []).find(function(x){ return x.smartsheet_project_id === pr.project_id; })
-    || (linkedIdea && (chartersL.data || []).find(function(x){ return x.idea_id === linkedIdea.id; })) || null;
-  var prBC = linkedIdea ? ((bcsL.data || []).find(function(x){ return x.idea_id === linkedIdea.id; }) || null) : null;
-  var alerts = projectAlerts(pr, !!prCharter);
+  var linkedIdea = linkedIdeaForProject(pr, ideas.data || []);
+  var deliverables = projectDeliverables(pr, ideas.data || [], deliverableDocs.data);
+  var alerts = projectAlerts(pr, deliverables);
   var prDecisions = (decisions.data || []).filter(function(d){ return d.related_type === 'Project' && d.related_id === pr.project_id; });
   var isPMTT = p.auth.isPMTT;
   var naVal = na[0] === null ? (pr.needs_attention || '') : na[0];
-  var delivery = projectDeliveryHealth(pr, workItems.data || [], updates.data || [], !!prCharter);
+  var delivery = projectDeliveryHealth(pr, workItems.data || [], updates.data || [], deliverables);
   var canUpdate = isPMTT || p.auth.profile.role === 'project_lead';
   var nextWorkOrder = (workItems.data || []).reduce(function(max,w){ return Math.max(max, Number(w.sort_order)||0); }, 0) + 10;
 
@@ -2387,6 +2531,7 @@ function ProjectDetailPage(p) {
           <h2>Description</h2>
           <p class="small" style="white-space:pre-wrap">${pr.project_description || 'No description.'}</p>
         </div>
+        <${DeliverablesPanel} deliverables=${deliverables} />
         ${alerts.length > 0 && html`<div class="card" style="border-left:4px solid var(--red)">
           <h2>⚠️ Alerts</h2>
           ${alerts.map(function(a, i){ return html`<div key=${i} class="alert-line">
@@ -2408,9 +2553,6 @@ function ProjectDetailPage(p) {
             ${row('SmartSheet Project Lead', pr.project_lead)}
             ${row('IT lead', pr.pwt_it_lead)}
             ${row('Integrator / consultants', pr.integrator_consultants)}
-            <tr><td class="muted small">Charter</td><td>${(!pr.charter_status || pr.charter_status === 'Not created') && prCharter
-              ? html`<${Badge} color="blue">In app: ${prCharter.charter_id} ${prCharter.version} · ${prCharter.status}<//>`
-              : html`${statusBadge(pr.charter_status)} ${pr.charter_file ? ' · ' + pr.charter_file : ''}`}</td></tr>
             <tr><td class="muted small">IT demand</td><td>${statusBadge(pr.it_demand_status)}</td></tr>
             <tr><td class="muted small">AR</td><td>${statusBadge(pr.ar_status)} ${pr.ar_file ? ' · ' + pr.ar_file : ''}</td></tr>
             ${row('CAPEX k€', pr.capex_keur)}
@@ -2426,15 +2568,6 @@ function ProjectDetailPage(p) {
           ${linkedIdea
             ? html`<p>💡 Linked initiative: <${A} href=${'/ideas/'+linkedIdea.id}>${linkedIdea.idea_id} — ${linkedIdea.title}<//></p>`
             : html`<p class="muted small">Linked initiative: ${pr.linked_initiative_id || 'none recorded'}</p>`}
-          ${(prBC || prCharter) && html`<div style="background:#f7f8fb;border-radius:8px;padding:10px;margin:8px 0">
-            <div class="small" style="font-weight:600;margin-bottom:4px">📚 Living governance documents <span class="hint" style="font-weight:400">— versioned & change-logged, they evolve with the project</span></div>
-            ${prBC && linkedIdea && html`<p style="margin:4px 0">📄 <${A} href=${'/ideas/'+linkedIdea.id+'/business-case'}>Business Case ${prBC.business_case_id} (${prBC.version})<//>
-              ${' '}<${Badge} color=${prBC.status==='Approved'?'green':'blue'}>${prBC.status}<//></p>`}
-            ${prCharter && html`<p style="margin:4px 0">📄 ${linkedIdea
-                ? html`<${A} href=${'/ideas/'+linkedIdea.id+'/charter'}>Project Charter ${prCharter.charter_id} (${prCharter.version})<//>`
-                : html`Project Charter ${prCharter.charter_id} (${prCharter.version})`}
-              ${' '}<${Badge} color=${prCharter.status==='Approved'?'green':'blue'}>${prCharter.status}<//></p>`}
-          </div>`}
           ${prDecisions.length ? prDecisions.map(function(d){
             return html`<div key=${d.id} class="alert-line">
               <${Badge} color=${d.status === 'Decided' ? 'green' : 'amber'}>${d.status}<//>
@@ -2476,7 +2609,8 @@ function StatusB(p) {
 }
 function ProjectsPage(p) {
   var projects = useAsync(api.listProjects, []);
-  var chartersL = useAsync(api.listChartersLight, []);
+  var ideas = useAsync(api.listIdeas, []);
+  var docs = useAsync(api.listDeliverablesLight, []);
   var workItems = useAsync(api.listAllProjectWorkItems, []);
   var updates = useAsync(api.listAllProjectUpdates, []);
   var fl = useState({stage:'',pillar:'',flag:'',q:''});
@@ -2486,19 +2620,22 @@ function ProjectsPage(p) {
     return (projects.data||[]).filter(function(p){
       return (!flt.stage || (p.current_stage||'').indexOf(flt.stage.slice(0,2)) === 0) &&
         (!flt.pillar || p.digital_pillar === flt.pillar) &&
-        (!flt.flag || (flt.flag==='priority'&&isPriorityProject(p)) || (flt.flag==='quick_win'&&isQuickWinProject(p)) || (flt.flag==='alerts'&&projectAlerts(p).length>0)) &&
+        (!flt.flag || (flt.flag==='priority'&&isPriorityProject(p)) || (flt.flag==='quick_win'&&isQuickWinProject(p)) || (flt.flag==='alerts'&&projectAlerts(p, projectDeliverables(p, ideas.data || [], docs.data)).length>0)) &&
         (!flt.q || (p.project_name+' '+p.project_id+' '+(p.linked_initiative_id||'')).toLowerCase().indexOf(flt.q.toLowerCase()) >= 0);
     });
-  }, [projects.data, flt]);
-  if (projects.loading) return html`<p>Loading…</p>`;
-  var chMap = charterMap(chartersL.data);
+  }, [projects.data, ideas.data, docs.data, flt]);
+  if (projects.loading || ideas.loading || docs.loading) return html`<p>Loading…</p>`;
   function itemsFor(pr){ return (workItems.data || []).filter(function(w){ return w.project_id === pr.project_id; }); }
   function updatesFor(pr){ return (updates.data || []).filter(function(u){ return u.project_ref === pr.id; }); }
-  var enriched = list.map(function(pr){ return { p:pr, h:projectDeliveryHealth(pr, itemsFor(pr), updatesFor(pr), !!chMap[pr.project_id]) }; });
+  var enriched = list.map(function(pr){
+    var deliverables = projectDeliverables(pr, ideas.data || [], docs.data);
+    return { p:pr, deliverables:deliverables, h:projectDeliveryHealth(pr, itemsFor(pr), updatesFor(pr), deliverables) };
+  });
   var red = enriched.filter(function(x){ return x.h.status === 'Red'; }).length;
   var amber = enriched.filter(function(x){ return x.h.status === 'Amber'; }).length;
   var missingUpdate = enriched.filter(function(x){ return !x.h.latest && !isProjectClosed(x.p); }).length;
   var overdue = enriched.reduce(function(sum,x){ return sum + x.h.work.overdue.length; }, 0);
+  var deliverableGaps = enriched.filter(function(x){ return deliverableIssues(x.deliverables).length > 0; }).length;
   return html`<div>
     <div class="topbar"><div><h1>Projects</h1>
       <p class="muted small mb0">${p.auth.profile.role === 'project_lead' ? 'My delivery workspace — assigned projects, updates, risks and next milestones.' : 'Portfolio delivery command center — project health, updates, governance and SmartSheet baseline.'}</p></div></div>
@@ -2507,6 +2644,7 @@ function ProjectsPage(p) {
       <div class="delivery-card"><div class="small muted">Red / Amber</div><div class="num" style="color:${red ? 'var(--red)' : 'var(--text)'}">${red} / ${amber}</div><div class="small muted">delivery health</div></div>
       <div class="delivery-card"><div class="small muted">Overdue items</div><div class="num" style="color:${overdue ? 'var(--red)' : 'var(--text)'}">${overdue}</div><div class="small muted">milestones + activities</div></div>
       <div class="delivery-card"><div class="small muted">Missing updates</div><div class="num" style="color:${missingUpdate ? 'var(--amber)' : 'var(--text)'}">${missingUpdate}</div><div class="small muted">weekly follow-up</div></div>
+      <div class="delivery-card"><div class="small muted">Deliverable gaps</div><div class="num" style="color:${deliverableGaps ? 'var(--amber)' : 'var(--text)'}">${deliverableGaps}</div><div class="small muted">BC / PC review needed</div></div>
     </div>
     <div class="filters">
       <input placeholder="Search…" value=${flt.q} onInput=${function(e){setF('q',e.target.value)}} />
@@ -2517,9 +2655,9 @@ function ProjectsPage(p) {
         <option value="quick_win">Quick win</option><option value="alerts">With alerts</option></select>
     </div>
     <div class="card" style="overflow-x:auto"><table class="data">
-      <thead><tr><th>ID</th><th>Name</th><th>Health</th><th>Progress</th><th>Next milestone</th><th>Latest update</th><th>Stage</th><th>Pillar</th><th>Lead</th><th>Governance</th><th>End</th><th>Alerts</th></tr></thead>
+      <thead><tr><th>ID</th><th>Name</th><th>Health</th><th>Progress</th><th>Next milestone</th><th>Latest update</th><th>Stage</th><th>Pillar</th><th>Lead</th><th>BC / PC</th><th>End</th><th>Alerts</th></tr></thead>
       <tbody>${enriched.map(function(x){
-        var pr = x.p, h = x.h, alerts = projectAlerts(pr, !!chMap[pr.project_id]);
+        var pr = x.p, h = x.h, alerts = projectAlerts(pr, x.deliverables);
         return html`<tr key=${pr.id} onClick=${function(){nav('/projects/'+pr.id)}} style="cursor:pointer">
           <td>${pr.project_id}</td>
           <td>${pr.project_name}${isPriorityProject(pr)&&html` <${Badge} color="red">P<//>`}${isQuickWinProject(pr)&&html` <${Badge} color="green">QW<//>`}</td>
@@ -2529,22 +2667,20 @@ function ProjectsPage(p) {
           <td class="small">${h.latest ? html`${fmtDate(h.latest.update_week || h.latest.created_at)}<br /><span class="muted">${h.latest.health_status}</span>` : html`<${Badge} color="amber">Missing<//>`}</td>
           <td class="small">${pr.current_stage||'—'}</td><td class="small">${pr.digital_pillar||'—'}</td>
           <td class="small">${projectManagerLabel(pr)}</td>
-          <td class="small">${(!pr.charter_status || pr.charter_status === 'Not created') && chMap[pr.project_id]
-            ? html`<${Badge} color="blue">Charter in app<//>`
-            : html`<${StatusB} v=${pr.charter_status} />`}</td>
+          <td class="small"><${DeliverablePills} deliverables=${x.deliverables} /></td>
           <td class="small">${fmtDate(pr.planned_end_date)}</td>
           <td>${alerts.length > 0 && html`<${Badge} color="red">${alerts.length} ⚠<//>`}</td></tr>`; })}
       ${!list.length && html`<tr><td colSpan="12" class="muted">No projects. Import a SmartSheet export from the SmartSheet I/O screen.</td></tr>`}
       </tbody></table></div>
-    ${selected && html`<${ProjectPanel} p=${selected} onClose=${function(){selS[1](null)}} />`}
+    ${selected && html`<${ProjectPanel} p=${selected} deliverables=${projectDeliverables(selected, ideas.data || [], docs.data)} onClose=${function(){selS[1](null)}} />`}
   </div>`;
 }
 function ProjectPanel(props) {
   var p = props.p;
-  var alerts = projectAlerts(p);
+  var alerts = projectAlerts(p, props.deliverables);
   var rows = [['Stage',p.current_stage],['Execution phase',p.execution_phase],['Pillar',p.digital_pillar],
     ['Benefiting functions',p.key_benefiting_functions],['Sponsor',p.pillar_sponsor],['Assigned manager',projectManagerLabel(p)],['SmartSheet lead',p.project_lead],
-    ['IT lead',p.pwt_it_lead],['Integrator',p.integrator_consultants],['Charter',p.charter_status],
+    ['IT lead',p.pwt_it_lead],['Integrator',p.integrator_consultants],
     ['IT demand',p.it_demand_status],['AR',p.ar_status],['CAPEX k€',p.capex_keur],['Current Y budget',p.current_year_budget],
     ['Cost center',p.cost_center_internal_order],['Planned',fmtDate(p.planned_start_date)+' → '+fmtDate(p.planned_end_date)],
     ['Linked initiative',p.linked_initiative_id],
@@ -2553,6 +2689,7 @@ function ProjectPanel(props) {
     <p class="small" style="white-space:pre-wrap">${p.project_description||'No description.'}</p>
     ${alerts.length > 0 && html`<div class="card" style="background:var(--red-soft);border:none">
       ${alerts.map(function(a,i){return html`<div key=${i} class="small">⚠ [${a.type}] ${a.msg}</div>`})}</div>`}
+    <div style="margin:12px 0"><${DeliverablePills} deliverables=${props.deliverables} /></div>
     <table class="data"><tbody>
       ${rows.map(function(r){return html`<tr key=${r[0]}><td class="muted small" style="width:150px">${r[0]}</td><td>${r[1] != null ? r[1] : '—'}</td></tr>`})}
     </tbody></table><//>`;
@@ -2727,7 +2864,7 @@ function PipelineChart(p) {
   });
   p.projects.forEach(function(pr) {
     place(pr.digital_pillar || 'Unassigned', pipeSlotProject(pr, expanded), pipeR(parseNum(pr.capex_keur)), {
-      kind: 'project', id: pr.id, halo: projectAlerts(pr, !!(p.chMap || {})[pr.project_id]).length > 0 || isPriorityProject(pr),
+      kind: 'project', id: pr.id, halo: projectAlerts(pr, (p.deliverableMap || {})[pr.project_id]).length > 0 || isPriorityProject(pr),
       label: pr.project_id + ' — ' + pr.project_name + (pr.capex_keur != null ? ' · CAPEX ' + pr.capex_keur + ' k€' : ' · no CAPEX data') });
   });
   return html`<div>
@@ -2822,7 +2959,7 @@ function exportSteercoPPT(I, P, D, chMap) {
   // Slide 3 - alerts
   var s3 = slide('Alerts & exceptions');
   var alerts = [];
-  P.forEach(function(p) { projectAlerts(p, !!(chMap || {})[p.project_id]).forEach(function(a) {
+  P.forEach(function(p) { projectAlerts(p, (chMap || {})[p.project_id]).forEach(function(a) {
     alerts.push({ t:'['+a.type.toUpperCase()+'] '+p.project_id+' '+p.project_name+' - '+a.msg,
       c: a.type==='budget' ? RED : a.type==='planning' ? AMBER : GREY }); }); });
   I.filter(triageOverdue).forEach(function(i) {
@@ -2862,14 +2999,14 @@ function CockpitPage() {
   var expPillar = useState(null);
   var cfl = useState({ pillar:'', stage:'' });
   var ideas = useAsync(api.listIdeas, []);
-  var chartersL = useAsync(api.listChartersLight, []);
+  var docs = useAsync(api.listDeliverablesLight, []);
   var projects = useAsync(api.listProjects, []);
   var workItems = useAsync(api.listAllProjectWorkItems, []);
   var updates = useAsync(api.listAllProjectUpdates, []);
   var decisions = useAsync(api.listDecisions, []);
-  if (ideas.loading || projects.loading || decisions.loading) return html`<p>Loading…</p>`;
+  if (ideas.loading || projects.loading || decisions.loading || docs.loading) return html`<p>Loading…</p>`;
   var I = ideas.data||[], P = projects.data||[], D = decisions.data||[];
-  var chMap = charterMap(chartersL.data);
+  var chMap = projectDeliverableMap(projects.data || [], ideas.data || [], docs.data);
   var cf = cfl[0];
   if (cf.pillar) {
     I = I.filter(function(i){ return (i.digital_pillar || 'Unassigned') === cf.pillar; });
@@ -2897,11 +3034,13 @@ function CockpitPage() {
   var completed = P.filter(function(p){return (p.current_stage||'').indexOf('G5') === 0});
   function cItemsFor(pr){ return (workItems.data || []).filter(function(w){ return w.project_id === pr.project_id; }); }
   function cUpdatesFor(pr){ return (updates.data || []).filter(function(u){ return u.project_ref === pr.id; }); }
-  var deliveryRows = activeP.map(function(pr){ return { p:pr, h:projectDeliveryHealth(pr, cItemsFor(pr), cUpdatesFor(pr), !!chMap[pr.project_id]) }; });
+  var deliveryRows = activeP.map(function(pr){ return { p:pr, h:projectDeliveryHealth(pr, cItemsFor(pr), cUpdatesFor(pr), chMap[pr.project_id]) }; });
   var redProjects = deliveryRows.filter(function(x){ return x.h.status === 'Red'; });
   var missingUpdates = deliveryRows.filter(function(x){ return !x.h.latest; });
   var overdueDeliveryItems = deliveryRows.reduce(function(sum,x){ return sum + x.h.work.overdue.length; }, 0);
-  var withAlerts = P.map(function(p){return {p:p, alerts:projectAlerts(p, !!chMap[p.project_id])}}).filter(function(x){return x.alerts.length});
+  var withAlerts = P.map(function(p){return {p:p, alerts:projectAlerts(p, chMap[p.project_id])}}).filter(function(x){return x.alerts.length});
+  var deliverableGaps = P.filter(function(p){ return deliverableIssues(chMap[p.project_id]).length > 0; }).length
+    + I.filter(function(i){ return i.stage === 'G1 Approval' && deliverableIssues(ideaDeliverables(i, docs.data)).length > 0; }).length;
   var budgetAlerts = withAlerts.filter(function(x){return x.alerts.some(function(a){return a.type==='budget'})});
   var planningAlerts = withAlerts.filter(function(x){return x.alerts.some(function(a){return a.type==='planning'})});
   var govAlerts = withAlerts.filter(function(x){return x.alerts.some(function(a){return a.type==='governance'})});
@@ -2967,6 +3106,7 @@ function CockpitPage() {
       <div class="delivery-card"><div class="small muted">Missing updates</div><div class="num" style="color:${missingUpdates.length ? 'var(--amber)' : 'var(--text)'}">${missingUpdates.length}</div><div class="small muted">weekly project follow-up</div></div>
       <div class="delivery-card"><div class="small muted">Overdue delivery items</div><div class="num" style="color:${overdueDeliveryItems ? 'var(--red)' : 'var(--text)'}">${overdueDeliveryItems}</div><div class="small muted">milestones + activities</div></div>
       <div class="delivery-card"><div class="small muted">Projects with alerts</div><div class="num">${withAlerts.length}</div><div class="small muted">planning / budget / governance</div></div>
+      <div class="delivery-card"><div class="small muted">Deliverable gaps</div><div class="num" style="color:${deliverableGaps ? 'var(--amber)' : 'var(--text)'}">${deliverableGaps}</div><div class="small muted">BC / PC review needed</div></div>
     </div>
     <div class="grid cols-2">
       <div class="card">
@@ -3025,7 +3165,7 @@ function CockpitPage() {
     </div>
     <div class="card">
       <h2>🗺 Portfolio pipeline — ideas & projects by pillar</h2>
-      <${PipelineChart} ideas=${I} projects=${P} chMap=${chMap} />
+      <${PipelineChart} ideas=${I} projects=${P} deliverableMap=${chMap} />
     </div>
     <div class="grid cols-2">
       <div class="card">
@@ -3066,10 +3206,11 @@ function CockpitPage() {
 function ReviewsPage() {
   var projects = useAsync(api.listProjects, []);
   var ideas = useAsync(api.listIdeas, []);
-  var chartersL = useAsync(api.listChartersLight, []);
-  if (projects.loading || ideas.loading) return html`<p>Loading…</p>`;
+  var docs = useAsync(api.listDeliverablesLight, []);
+  if (projects.loading || ideas.loading || docs.loading) return html`<p>Loading…</p>`;
   var P = (projects.data||[]).filter(function(p){return (p.current_stage||'').indexOf('G5') !== 0});
   var atG1 = (ideas.data||[]).filter(function(i){return i.stage === 'G1 Approval'});
+  var deliverableMap = projectDeliverableMap(P, ideas.data || [], docs.data);
   var pillars = []; var seen = {};
   P.forEach(function(p){ var k = p.digital_pillar || 'Unassigned'; if (!seen[k]) { seen[k] = true; pillars.push(k); } });
   atG1.forEach(function(i){ var k = i.digital_pillar || 'Unassigned'; if (!seen[k]) { seen[k] = true; pillars.push(k); } });
@@ -3087,8 +3228,7 @@ function ReviewsPage() {
       var leads = []; var ls = {};
       inP.forEach(function(p){ var k = projectManagerLabel(p); if (!ls[k]) { ls[k] = true; leads.push(k); } });
       leads.sort();
-      var chMap = charterMap(chartersL.data);
-      var redCount = inP.filter(function(p){return projectAlerts(p, !!chMap[p.project_id]).length > 0}).length;
+      var redCount = inP.filter(function(p){return projectAlerts(p, deliverableMap[p.project_id]).length > 0}).length;
       return html`<div class="card" key=${pillar}>
         <h2>${pillar} <span class="muted small" style="font-weight:400">· ${inP.length} project(s)${redCount ? ' · ' : ''}${redCount ? html`<${Badge} color="red">${redCount} with alerts<//>` : ''}</span></h2>
         ${g1.length > 0 && html`<div style="margin-bottom:10px">
@@ -3096,6 +3236,7 @@ function ReviewsPage() {
           ${g1.map(function(i){
             return html`<div key=${i.id} class="alert-line"><${Badge} color="purple">G1<//>
               <span><${A} href=${'/ideas/'+i.id}>${i.idea_id} ${i.title}<//></span>
+              <${DeliverablePills} deliverables=${ideaDeliverables(i, docs.data)} />
               <span class="muted small">${i.committee_target || 'committee TBD'}</span></div>`; })}
         </div>`}
         ${leads.map(function(lead) {
@@ -3103,11 +3244,12 @@ function ReviewsPage() {
           return html`<div key=${lead} style="margin-bottom:8px;border-top:1px solid var(--border);padding-top:8px">
             <h3 class="small" style="margin-bottom:4px">${lead} <span class="muted" style="font-weight:400">· ${its.length}</span></h3>
             ${its.map(function(p) {
-              var alerts = projectAlerts(p, !!chMap[p.project_id]);
+              var alerts = projectAlerts(p, deliverableMap[p.project_id]);
               return html`<div key=${p.id} class="alert-line">
                 <span style="min-width:70px" class="muted small">${p.project_id}</span>
                 <span><${A} href=${'/projects/'+p.id}>${p.project_name}<//></span>
                 <${Badge} color="gray">${p.current_stage || '?'}<//>
+                <${DeliverablePills} deliverables=${deliverableMap[p.project_id]} />
                 ${isPriorityProject(p) && html`<${Badge} color="red">P<//>`}
                 ${isQuickWinProject(p) && html`<${Badge} color="green">QW<//>`}
                 ${alerts.map(function(a, k){
@@ -3143,7 +3285,8 @@ function NotificationsPage(p) {
 function AdminPage(p) {
   var profiles = useAsync(api.listProfiles, []);
   var projects = useAsync(api.listProjects, []);
-  var chartersL = useAsync(api.listChartersLight, []);
+  var ideas = useAsync(api.listIdeas, []);
+  var docs = useAsync(api.listDeliverablesLight, []);
   var workItems = useAsync(api.listAllProjectWorkItems, []);
   var updates = useAsync(api.listAllProjectUpdates, []);
   var refs = useAsync(api.listReference, []);
@@ -3151,10 +3294,10 @@ function AdminPage(p) {
   var er = useState(null), bz = useState(false);
   var thr = useState(null), sla = useState(null);
   var newVal = useState({ pillar:'', function:'', value_type:'' });
-  if (profiles.loading || projects.loading || refs.loading) return html`<p>Loading…</p>`;
+  if (profiles.loading || projects.loading || ideas.loading || docs.loading || refs.loading) return html`<p>Loading…</p>`;
   var R = refs.data || [];
   var people = profiles.data || [];
-  var adminChMap = charterMap(chartersL.data);
+  var adminDeliverableMap = projectDeliverableMap(projects.data || [], ideas.data || [], docs.data);
   var projectManagers = people.filter(function(pr){ return pr.active && pr.role === 'project_lead'; });
   var digitalTeam = people.filter(function(pr){ return pr.active && pr.role === 'transformation_team'; });
   function adminItemsFor(project){ return (workItems.data || []).filter(function(w){ return w.project_id === project.project_id; }); }
@@ -3284,13 +3427,15 @@ function AdminPage(p) {
       <h2>Project assignments</h2>
       <p class="muted small" style="margin-top:0">Assign each project to an app Project Manager. The SmartSheet Project Lead text remains visible as imported data.</p>
       <div style="overflow-x:auto"><table class="data">
-        <thead><tr><th>Project</th><th>Pillar</th><th>Health</th><th>Last update</th><th>Next milestone</th><th>SmartSheet Lead</th><th>Assigned Project Manager</th></tr></thead>
+        <thead><tr><th>Project</th><th>Pillar</th><th>Health</th><th>BC / PC</th><th>Last update</th><th>Next milestone</th><th>Smartsheet Lead</th><th>Assigned Project Manager</th></tr></thead>
         <tbody>${(projects.data||[]).map(function(project){
-          var h = projectDeliveryHealth(project, adminItemsFor(project), adminUpdatesFor(project), !!adminChMap[project.project_id]);
+          var projectDocs = adminDeliverableMap[project.project_id];
+          var h = projectDeliveryHealth(project, adminItemsFor(project), adminUpdatesFor(project), projectDocs);
           return html`<tr key=${project.id}>
             <td><${A} href=${'/projects/'+project.id}>${project.project_id} ${project.project_name}<//></td>
             <td class="small">${project.digital_pillar || 'Unassigned'}</td>
             <td>${healthBadge(h.status)}</td>
+            <td><${DeliverablePills} deliverables=${projectDocs} /></td>
             <td class="small">${h.latest ? fmtDate(h.latest.update_week || h.latest.created_at) : html`<${Badge} color="amber">Missing<//>`}</td>
             <td class="small">${h.work.next ? html`${h.work.next.name}<br /><span class="muted">${fmtDate(h.work.next.planned_end_date)}</span>` : '—'}</td>
             <td class="small">${project.project_lead || '—'}</td>
@@ -3303,7 +3448,7 @@ function AdminPage(p) {
             </td>
           </tr>`;
         })}
-        ${!(projects.data||[]).length && html`<tr><td colSpan="7" class="muted">No projects yet. Import projects from SmartSheet I/O first.</td></tr>`}
+        ${!(projects.data||[]).length && html`<tr><td colSpan="8" class="muted">No projects yet. Import projects from Smartsheet I/O first.</td></tr>`}
         </tbody></table></div>
     </div>
     <div class="card">

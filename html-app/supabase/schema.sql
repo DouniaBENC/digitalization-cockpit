@@ -7,7 +7,8 @@
 drop trigger if exists on_auth_user_created on auth.users;
 drop function if exists public.handle_new_user, public.my_role, public.is_pm_or_tt,
   public.touch_updated_at, public.notify_pm_tt, public.on_idea_insert,
-  public.on_idea_stage_change, public.qualify_idea, public.convert_to_project cascade;
+  public.on_idea_stage_change, public.qualify_idea, public.convert_to_project,
+  public.can_read_project_deliverables cascade;
 drop table if exists public.notifications, public.activity, public.document_versions,
   public.decisions, public.business_cases, public.project_charters, public.projects,
   public.ideas, public.profiles cascade;
@@ -422,6 +423,23 @@ begin
     'Initiative ' || v_idea.idea_id || ' converted to project ' || p_project_id);
 end; $$;
 
+create or replace function public.can_read_project_deliverables(p_idea uuid, p_smartsheet_project_id text)
+returns boolean language sql security definer stable set search_path = public as $$
+  select coalesce(
+    public.my_role() = 'project_lead'
+    and exists (
+      select 1 from public.projects p
+      left join public.ideas i on i.idea_id = p.linked_initiative_id
+      where (p.project_manager_id = auth.uid()
+        or p.project_lead = (select name from public.profiles where id = auth.uid())
+        or p.project_lead = (select email from public.profiles where id = auth.uid()))
+        and (i.id = p_idea or p.project_id = p_smartsheet_project_id)
+    ), false
+  )
+$$;
+revoke all on function public.can_read_project_deliverables(uuid, text) from public;
+grant execute on function public.can_read_project_deliverables(uuid, text) to authenticated;
+
 -- ============================================================
 -- Row Level Security (permission matrix from the spec)
 -- ============================================================
@@ -458,16 +476,22 @@ create policy ideas_update_pm_tt on public.ideas for update to authenticated
 create policy ideas_update_own_before_triage on public.ideas for update to authenticated
   using (requester_id = auth.uid() and stage = 'L0 Submitted')
   with check (requester_id = auth.uid() and stage in ('L0 Submitted'));
+create policy ideas_project_lead_select on public.ideas for select to authenticated
+  using (public.can_read_project_deliverables(id, null));
 
 -- Business cases / charters: PM + TT full, assigned project lead read+update
 create policy bc_all_pm_tt on public.business_cases for all to authenticated
   using (public.is_pm_or_tt()) with check (public.is_pm_or_tt());
 create policy bc_lead on public.business_cases for select to authenticated
   using (exists (select 1 from public.ideas i where i.id = business_cases.idea_id and i.owner_id = auth.uid()));
+create policy bc_project_lead_select on public.business_cases for select to authenticated
+  using (public.can_read_project_deliverables(idea_id, null));
 create policy ch_all_pm_tt on public.project_charters for all to authenticated
   using (public.is_pm_or_tt()) with check (public.is_pm_or_tt());
 create policy ch_lead on public.project_charters for select to authenticated
   using (exists (select 1 from public.ideas i where i.id = project_charters.idea_id and i.owner_id = auth.uid()));
+create policy ch_project_lead_select on public.project_charters for select to authenticated
+  using (public.can_read_project_deliverables(idea_id, smartsheet_project_id));
 
 -- Decisions: PM + TT full; owner / action owner read+update
 create policy dec_all_pm_tt on public.decisions for all to authenticated
@@ -574,21 +598,17 @@ create policy dv_all_pm_tt on public.document_versions for all to authenticated
 -- ============================================================
 
 -- ============================================================
--- Idea owner kit + field-level audit log (migration 2, folded in)
+-- Idea Owner document visibility + field-level audit log (migration 2, folded in)
 -- ============================================================
 
--- 1) Le porteur d'idée (requester) peut lire ET éditer le BC / Charter de SA propre idée
+-- 1) The Idea Owner can read the BC / Charter; Digital Transformation Team owns document updates.
 drop policy if exists bc_requester_select on public.business_cases;
 drop policy if exists bc_requester_update on public.business_cases;
 drop policy if exists ch_requester_select on public.project_charters;
 drop policy if exists ch_requester_update on public.project_charters;
 create policy bc_requester_select on public.business_cases for select to authenticated
   using (exists (select 1 from public.ideas i where i.id = business_cases.idea_id and i.requester_id = auth.uid()));
-create policy bc_requester_update on public.business_cases for update to authenticated
-  using (exists (select 1 from public.ideas i where i.id = business_cases.idea_id and i.requester_id = auth.uid()));
 create policy ch_requester_select on public.project_charters for select to authenticated
-  using (exists (select 1 from public.ideas i where i.id = project_charters.idea_id and i.requester_id = auth.uid()));
-create policy ch_requester_update on public.project_charters for update to authenticated
   using (exists (select 1 from public.ideas i where i.id = project_charters.idea_id and i.requester_id = auth.uid()));
 
 -- 2) Audit log générique : chaque modification est tracée (date, utilisateur, champs modifiés)
@@ -672,10 +692,10 @@ begin
   perform public.notify_pm_tt('Gate readiness','Idea', v_idea.idea_id,
     'Business Case v0 and Project Charter v0 created for ' || v_idea.idea_id);
 
-  -- Kit porteur : notifier le requester qu'il peut compléter ses documents
+  -- Notify the Idea Owner that the Digital Team is preparing the decision kit.
   insert into public.notifications (recipient_id, type, related_type, related_id, message)
   values (v_idea.requester_id, 'Idea qualified', 'Idea', v_idea.idea_id,
-    'Your idea ' || v_idea.idea_id || ' has been qualified! Please complete your Business Case v0 and Project Charter v0 from the idea page.');
+    'Your idea ' || v_idea.idea_id || ' has been qualified. The Digital Transformation Team is preparing the Business Case and Project Charter and may contact you for clarification.');
 
   return jsonb_build_object('business_case_id', v_bc, 'charter_id', v_ch, 'decision_id', v_dec);
 end; $$;
@@ -718,7 +738,7 @@ update public.project_charters set content = jsonb_strip_nulls(jsonb_build_objec
       else '{}'::jsonb end
 where content = '{}'::jsonb;
 
--- v0 générée avec la structure lean (answer-first) + kit porteur
+-- v0 generated with the lean decision-kit structure
 create or replace function public.qualify_idea(p_idea uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -786,7 +806,7 @@ begin
 
   insert into public.notifications (recipient_id, type, related_type, related_id, message)
   values (v_idea.requester_id, 'Idea qualified', 'Idea', v_idea.idea_id,
-    'Your idea ' || v_idea.idea_id || ' has been qualified! Please complete your Business Case v0 and Project Charter v0 from the idea page.');
+    'Your idea ' || v_idea.idea_id || ' has been qualified. The Digital Transformation Team is preparing the Business Case and Project Charter and may contact you for clarification.');
 
   return jsonb_build_object('business_case_id', v_bc, 'charter_id', v_ch, 'decision_id', v_dec);
 end; $$;
@@ -937,7 +957,7 @@ begin
         when 'L0 Triage' then
           'Your idea ' || new.idea_id || ' is now being reviewed by the Digital Team.'
         when 'L2 BC/Charter' then
-          'Your idea ' || new.idea_id || ' moved to preparation (L2). Please complete your Business Case and Project Charter from the idea page.'
+          'Your idea ' || new.idea_id || ' moved to decision-kit preparation (L2). The Digital Transformation Team is preparing the Business Case and Project Charter.'
         when 'G1 Approval' then
           'Your idea ' || new.idea_id || ' is ready and will be presented for the G1 committee decision.'
         when 'Converted' then
