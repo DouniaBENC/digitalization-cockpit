@@ -165,7 +165,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.3';
+var APP_VERSION = '2026.07.22.4';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -418,31 +418,29 @@ var api = {
       return one(r);
     });
   },
-  getProject: function(id){
-    return api.getSession().then(function(session){
-      if (!session) throw new Error('Your session has expired. Please sign out, sign back in, and try again.');
-      var ctl = new AbortController();
-      var timer = setTimeout(function(){ ctl.abort(); }, 7000);
-      return fetch(SUPABASE_URL + '/rest/v1/projects?id=eq.' + encodeURIComponent(id) + '&select=*', {
-        signal: ctl.signal,
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: 'Bearer ' + session.access_token,
-          Accept: 'application/json'
-        }
-      }).then(function(res){
-        clearTimeout(timer);
-        if (!res.ok) return res.text().then(function(t){ throw new Error(t || ('Project request failed: ' + res.status)); });
-        return res.json();
-      }).then(function(rows){
-        var row = (rows || [])[0] || null;
-        if (row) row.manager = null;
-        return row;
-      }).catch(function(e){
-        clearTimeout(timer);
-        if (e && e.name === 'AbortError') throw new Error('Project request timed out. Please refresh. If it repeats, check Supabase RLS/migration access for projects.');
-        throw e;
-      });
+  getProject: function(id, accessToken){
+    if (!accessToken) return Promise.reject(new Error('Your session has expired. Please sign out, sign back in, and try again.'));
+    var ctl = new AbortController();
+    var timer = setTimeout(function(){ ctl.abort(); }, 7000);
+    return fetch(SUPABASE_URL + '/rest/v1/projects?id=eq.' + encodeURIComponent(id) + '&select=*', {
+      signal: ctl.signal,
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: 'Bearer ' + accessToken,
+        Accept: 'application/json'
+      }
+    }).then(function(res){
+      clearTimeout(timer);
+      if (!res.ok) return res.text().then(function(t){ throw new Error(t || ('Project request failed: ' + res.status)); });
+      return res.json();
+    }).then(function(rows){
+      var row = (rows || [])[0] || null;
+      if (row) row.manager = null;
+      return row;
+    }).catch(function(e){
+      clearTimeout(timer);
+      if (e && e.name === 'AbortError') throw new Error('Project request timed out. Check your connection, then retry. If it repeats, ask a Program Manager to verify project access in Supabase.');
+      throw e;
     });
   },
   upsertProjects: function(rows){ return sb.from('projects').upsert(rows,{onConflict:'project_id'}).select().then(one); },
@@ -733,7 +731,10 @@ function useAsync(fn, deps) {
     var alive = true;
     setState(function(s){ return {loading:true, data:s.data, error:null}; });
     var timer = setTimeout(function(){
-      if (alive) setState({loading:false, data:null, error:new Error('The request timed out. Refresh the page and check that the Supabase migrations are applied.')});
+      if (alive) {
+        alive = false;
+        setState({loading:false, data:null, error:new Error('The request timed out. Check your connection, then retry. If the project list works but this page does not, ask a Program Manager to verify project access in Supabase.')});
+      }
     }, 12000);
     Promise.resolve().then(fn).then(function(data){
       if (!alive) return;
@@ -1952,7 +1953,7 @@ function ProjectUpdatePanel(p) {
 
 /* ================= Project detail page (delivery workspace + comments) ================= */
 function ProjectDetailPage(p) {
-  var project = useAsync(function(){ return api.getProject(p.id); }, [p.id]);
+  var project = useAsync(function(){ return api.getProject(p.id, p.auth.session && p.auth.session.access_token); }, [p.id, p.auth.session && p.auth.session.access_token]);
   var ideas = useAsync(api.listIdeas, [p.id]);
   var decisions = useAsync(api.listDecisions, [p.id]);
   var activity = useAsync(function(){ return api.listActivity('Project', p.id); }, [p.id]);
@@ -1969,10 +1970,18 @@ function ProjectDetailPage(p) {
   if (project.loading) return html`<div class="card" style="max-width:620px">
     <h2>Loading project workspace…</h2>
     <p class="muted small">Project ID: ${p.id}</p>
-    <p class="muted small">App version: v${APP_VERSION}. If this stays visible for more than 12 seconds, hard-refresh the browser tab.</p>
+    <p class="muted small">App version: v${APP_VERSION}. This request stops automatically if Supabase does not answer.</p>
     <button class="btn secondary" onClick=${function(){ location.reload(); }}>Reload</button>
   </div>`;
-  if (project.error) return html`<p style="color:var(--red)">${userErrorMessage(project.error)}</p>`;
+  if (project.error) return html`<div class="card" style="max-width:680px;border-left:4px solid var(--red)">
+    <h2>We could not open this project</h2>
+    <p style="color:var(--red)">${userErrorMessage(project.error)}</p>
+    <p class="muted small">Project ID: ${p.id} · App version: v${APP_VERSION}</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn" onClick=${project.reload}>Retry</button>
+      <${A} href="/projects" class="btn secondary">Back to projects<//>
+    </div>
+  </div>`;
   var pr = project.data;
   if (!pr) return html`<p class="muted">Project not found. <${A} href="/projects">← Back to projects<//></p>`;
   var linkedIdea = (ideas.data || []).find(function(i){ return i.idea_id === pr.linked_initiative_id || i.linked_project_id === pr.project_id; });
