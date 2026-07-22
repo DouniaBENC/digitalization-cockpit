@@ -165,7 +165,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.2';
+var APP_VERSION = '2026.07.22.3';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -419,15 +419,30 @@ var api = {
     });
   },
   getProject: function(id){
-    return withTimeout(sb.from('projects').select('*, manager:project_manager_id(name,email)').eq('id', id).maybeSingle(), 6000, {error:{message:'project_manager_id timeout'}}).then(function(r){
-      var msg = r.error && (r.error.message || '');
-      if (r.error && (msg.indexOf('project_manager_id') >= 0 || msg.indexOf('relationship') >= 0 || msg.indexOf('schema cache') >= 0)) {
-        return withTimeout(sb.from('projects').select('*').eq('id', id).maybeSingle(), 6000, {data:null, error:null}).then(one).then(function(row){
-          if (row) row.manager = null;
-          return row;
-        });
-      }
-      return one(r);
+    return api.getSession().then(function(session){
+      if (!session) throw new Error('Your session has expired. Please sign out, sign back in, and try again.');
+      var ctl = new AbortController();
+      var timer = setTimeout(function(){ ctl.abort(); }, 7000);
+      return fetch(SUPABASE_URL + '/rest/v1/projects?id=eq.' + encodeURIComponent(id) + '&select=*', {
+        signal: ctl.signal,
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + session.access_token,
+          Accept: 'application/json'
+        }
+      }).then(function(res){
+        clearTimeout(timer);
+        if (!res.ok) return res.text().then(function(t){ throw new Error(t || ('Project request failed: ' + res.status)); });
+        return res.json();
+      }).then(function(rows){
+        var row = (rows || [])[0] || null;
+        if (row) row.manager = null;
+        return row;
+      }).catch(function(e){
+        clearTimeout(timer);
+        if (e && e.name === 'AbortError') throw new Error('Project request timed out. Please refresh. If it repeats, check Supabase RLS/migration access for projects.');
+        throw e;
+      });
     });
   },
   upsertProjects: function(rows){ return sb.from('projects').upsert(rows,{onConflict:'project_id'}).select().then(one); },
