@@ -74,14 +74,23 @@ table.data tr:hover td{background:#faf9f6}
 .delivery-card .num{font-size:24px;font-weight:700;line-height:1}
 .timeline{display:grid;gap:10px}
 .milestone{border:1px solid var(--border);border-radius:8px;background:#fff;overflow:hidden}
-.milestone-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:12px;background:#faf9f6;border-bottom:1px solid var(--border)}
-.activity-row{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:9px;align-items:start;padding:10px 12px;border-top:1px solid var(--border)}
+.milestone-head{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;padding:12px;background:#faf9f6;border-bottom:1px solid var(--border)}
+.milestone-head>div:first-child,.activity-row>div:nth-child(2){min-width:0;overflow-wrap:anywhere}
+.milestone-head>.plan-item-actions{justify-content:flex-start}
+.activity-row{display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;padding:10px 12px;border-top:1px solid var(--border)}
+.activity-row>.plan-item-actions,.activity-row>.btn{grid-column:2;justify-content:flex-start}
 .activity-row:first-child{border-top:none}
 .plan-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 .plan-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .plan-item-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
 .btn.icon-label{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .item-progress{display:flex;align-items:center;gap:7px;margin-top:5px}.item-progress .progress{width:110px;height:6px}
+@media(min-width:1280px){
+  .milestone-head{grid-template-columns:minmax(280px,1fr) auto}
+  .milestone-head>.plan-item-actions{justify-content:flex-end}
+  .activity-row{grid-template-columns:24px minmax(220px,1fr) auto}
+  .activity-row>.plan-item-actions,.activity-row>.btn{grid-column:auto;justify-content:flex-end}
+}
 .status-dot{width:10px;height:10px;border-radius:50%;margin-top:5px;background:var(--amber)}
 .status-dot.done{background:var(--green)}
 .status-dot.late{background:var(--red)}
@@ -170,7 +179,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.7';
+var APP_VERSION = '2026.07.22.8';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
