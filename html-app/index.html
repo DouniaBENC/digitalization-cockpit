@@ -174,11 +174,13 @@ table.data tr:hover td{background:#faf9f6}
 .cockpit-section-head h2{margin-bottom:0}
 .cockpit-two-col{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,.7fr);gap:14px}
 .intervention-list{border-top:1px solid var(--border)}
-.intervention-row{display:grid;grid-template-columns:82px minmax(180px,1fr) minmax(220px,1.2fr) minmax(145px,.65fr) 100px;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--border)}
+.intervention-row{display:grid;grid-template-columns:110px minmax(0,.9fr) minmax(0,1.15fr) minmax(0,.65fr) minmax(82px,.4fr);gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--border)}
 .intervention-row:last-child{border-bottom:none}
+.intervention-row>*{min-width:0}
 .intervention-project{min-width:0;overflow-wrap:anywhere}
 .intervention-project strong{display:block}
 .intervention-reason{min-width:0;overflow-wrap:anywhere}
+.intervention-owner,.intervention-due{min-width:0;overflow-wrap:anywhere;white-space:normal}
 .portfolio-table{overflow-x:auto}
 .portfolio-table table{min-width:760px}
 .portfolio-rag{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
@@ -190,6 +192,7 @@ table.data tr:hover td{background:#faf9f6}
 .cockpit-signal strong{display:block;margin-bottom:3px}
 .cockpit-load{display:grid;grid-template-columns:minmax(170px,1fr) 70px 70px 70px 110px;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
 .cockpit-load:last-child{border-bottom:none}
+@media(max-width:1200px){.cockpit-two-col{grid-template-columns:1fr}}
 @media(max-width:900px){
   .pulse-fields-3,.pulse-fields-2,.pulse-detail-grid{grid-template-columns:1fr}
   .review-kpis{grid-template-columns:repeat(2,1fr)}
@@ -292,7 +295,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.22.14';
+var APP_VERSION = '2026.07.23.15';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -3766,7 +3769,7 @@ function CockpitPage() {
               <div><${Badge} color=${item.kind==='Decision'||r.deliveryStatus==='Red'?'red':item.kind==='Reporting'||item.kind==='Support'?'amber':'gray'}>${item.kind}<//></div>
               <div class="intervention-project"><strong><${A} href=${'/projects/'+r.project.id}>${r.project.project_id}<//></strong><span class="small">${r.project.project_name}</span></div>
               <div class="intervention-reason small">${item.reason}</div>
-              <div class="intervention-owner small"><span class="muted">Owner</span><br />${projectManagerLabel(r.project)}</div>
+              <div class="intervention-owner small"><span class="muted">Owner</span><br />${projectManagerLabel(r.project).replace(/\s*<[^>]+>\s*$/, '')}</div>
               <div class=${'intervention-due review-deadline '+(due.overdue?'overdue':'')}>${due.label}</div>
             </div>`})}
             ${!interventionRows.length && html`<div class="governance-empty">No intervention is required in the current view.</div>`}
