@@ -140,7 +140,18 @@ table.data tr:hover td{background:#faf9f6}
 .review-kpi{border-left:3px solid var(--border);padding:10px 12px;background:#fff;min-height:62px}
 .review-kpi strong{display:block;font-size:22px;line-height:1.05}
 .review-kpi span{display:block;margin-top:4px}
+.weekly-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin:14px 0 16px}
+.weekly-summary-item{padding:12px 16px;border-left:3px solid var(--border);min-width:0}
+.weekly-summary-item strong{font-size:22px;line-height:1;display:inline-block;margin-right:7px}
+.weekly-summary-item span{overflow-wrap:anywhere}
 .review-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.review-primary-filters{display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,250px) minmax(150px,190px) auto;gap:8px;width:100%}
+.review-primary-filters input,.review-primary-filters select{height:38px;padding:7px 10px;font-size:12.5px}
+.review-more-filters{position:relative}
+.review-more-filters>summary{list-style:none;height:38px;display:flex;align-items:center;justify-content:center;padding:0 13px;border:1px solid var(--border);border-radius:7px;background:#fff;font-weight:600;cursor:pointer}
+.review-more-filters>summary::-webkit-details-marker{display:none}
+.review-more-grid{position:absolute;right:0;top:44px;z-index:5;width:min(520px,80vw);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:12px;background:#fff;border:1px solid var(--border);box-shadow:0 10px 28px rgba(10,10,10,.12)}
+.review-more-grid select{min-width:0}
 .review-filters{display:grid;grid-template-columns:minmax(150px,1.2fr) repeat(4,minmax(130px,1fr));gap:8px;flex:1}
 .review-filters input,.review-filters select{height:38px;padding:7px 10px;font-size:12.5px}
 .review-list{border-top:1px solid var(--border)}
@@ -148,6 +159,8 @@ table.data tr:hover td{background:#faf9f6}
 .review-row:last-child{border-bottom:none}
 .review-row-summary{min-width:0;overflow-wrap:anywhere}
 .review-row-summary>p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin:0}
+.review-issue{font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.review-issue-meta{margin-top:5px}
 .review-row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;min-width:92px}
 .review-exception{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
 .review-health-pair{display:grid;grid-template-columns:auto 1fr;gap:4px 8px;align-items:center}
@@ -199,6 +212,8 @@ table.data tr:hover td{background:#faf9f6}
   .review-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
   .review-row{grid-template-columns:1fr}
   .review-row-actions{justify-content:flex-start;min-width:0}
+  .review-primary-filters{grid-template-columns:1fr 1fr}
+  .review-more-grid{position:static;width:100%;grid-template-columns:1fr;margin-top:6px;box-shadow:none}
   .cockpit-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   .cockpit-two-col{grid-template-columns:1fr}
   .intervention-row{grid-template-columns:72px minmax(0,1fr);align-items:start}
@@ -210,7 +225,7 @@ table.data tr:hover td{background:#faf9f6}
   .pulse-fields-3>.field:first-child{grid-column:1 / -1}
 }
 @container (max-width:390px){.pulse-fields-3{grid-template-columns:1fr}.pulse-fields-3>.field:first-child{grid-column:auto}}
-@media(max-width:520px){.review-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.review-filters,.review-action-choice{grid-template-columns:1fr}.cockpit-kpis{grid-template-columns:1fr}.cockpit-load{grid-template-columns:minmax(0,1fr) repeat(2,52px)}.cockpit-load>*:nth-child(4),.cockpit-load>*:nth-child(5){display:none}}
+@media(max-width:520px){.review-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.weekly-summary,.review-primary-filters,.review-filters,.review-action-choice{grid-template-columns:1fr}.weekly-summary-item{padding:9px 10px}.cockpit-kpis{grid-template-columns:1fr}.cockpit-load{grid-template-columns:minmax(0,1fr) repeat(2,52px)}.cockpit-load>*:nth-child(4),.cockpit-load>*:nth-child(5){display:none}}
 .roadmap-note{background:#f4f2ed;border:1px dashed #c9c3b7;color:#4a473f;border-radius:var(--radius);padding:10px 14px;font-size:12.5px;margin-bottom:14px}
 .progress{background:#eef0f4;border-radius:999px;height:8px;overflow:hidden}
 .progress>div{height:100%;border-radius:999px;transition:width .3s}
@@ -295,7 +310,7 @@ var h = preact.h, render = preact.render, Fragment = preact.Fragment;
 var useState = preactHooks.useState, useEffect = preactHooks.useEffect, useMemo = preactHooks.useMemo;
 var html = htm.bind(h);
 var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-var APP_VERSION = '2026.07.23.15';
+var APP_VERSION = '2026.07.23.16';
 
 /* ================= Constants (spec reference data) ================= */
 var STAGES = ['L0 Submitted','L0 Triage','L1 Qualified','L2 BC/Charter','G1 Approval','Converted','Rejected','Hold'];
@@ -4080,7 +4095,7 @@ function ReviewPulseModal(p) {
   </div></div>`;
 }
 function WeeklyReviewPanel(p) {
-  var stateFilter = useState('Exceptions'), healthFilter = useState('All health'), pillarFilter = useState('All pillars');
+  var stateFilter = useState('Priority review'), healthFilter = useState('All health'), pillarFilter = useState('All pillars');
   var managerFilter = useState('All Project Managers'), search = useState(''), sort = useState('Severity');
   var selection = useState(null), notice = useState(null), error = useState(null), bulkBusy = useState(false);
   var rows = weeklyReviewRows(p.projects, p.items, p.updates, p.deliverables);
@@ -4093,7 +4108,10 @@ function WeeklyReviewPanel(p) {
   var pillars = Array.from(new Set(rows.map(function(r){return r.project.digital_pillar || 'Unassigned'}))).sort(comparePillars);
   var managers = Array.from(new Set(rows.map(function(r){return projectManagerLabel(r.project)}))).sort();
   var visible = rows.filter(function(r){
-    var stateOk = stateFilter[0] === 'Exceptions' ? r.exception
+    var priority = !!r.latest && (r.latest.decision_required || r.reviewStatus === 'Escalated' || r.reviewStatus === 'Action required' ||
+      r.declared === 'Red' || r.system === 'Red' || hasGovernanceText(r.latest.blockers) || hasGovernanceText(r.latest.support_needed) || r.health.work.overdue.length > 0);
+    var stateOk = stateFilter[0] === 'Priority review' ? priority
+      : stateFilter[0] === 'All exceptions' ? r.exception
       : stateFilter[0] === 'Submitted for review' ? r.latest && r.reviewStatus === 'Submitted'
       : stateFilter[0] === 'Missing / overdue' ? !r.latest || r.stale
       : stateFilter[0] === 'Decision required' ? r.latest && (r.latest.decision_required || r.reviewStatus === 'Escalated')
@@ -4132,22 +4150,23 @@ function WeeklyReviewPanel(p) {
       .catch(function(e){error[1](userErrorMessage(e));bulkBusy[1](false);});
   }
   return html`<div class="card">
-    <div class="review-toolbar"><div><h2>Weekly Delivery</h2><p class="muted small mb0">Review exceptions, recovery commitments and decision requests.</p></div><${Badge} color=${missing ? 'amber' : 'green'}>${current}/${rows.length} current - ${compliance}%<//></div>
-    <div class="review-kpis">
-      <div class="review-kpi" style="border-left-color:var(--green)"><strong>${compliance}%</strong><span class="muted small">Reporting compliance - ${current}/${rows.length}</span></div>
-      <div class="review-kpi" style="border-left-color:var(--red)"><strong>${decisions}</strong><span class="muted small">Decisions required</span></div>
-      <div class="review-kpi" style="border-left-color:var(--amber)"><strong>${recovery}</strong><span class="muted small">Recovery plans open</span></div>
-      <div class="review-kpi"><strong>${missing}</strong><span class="muted small">Missing or overdue Pulses</span></div>
+    <div class="review-toolbar"><div><h2>Weekly Delivery</h2><p class="muted small mb0">Projects requiring attention this week.</p></div></div>
+    <div class="weekly-summary">
+      <div class="weekly-summary-item" style="border-left-color:${compliance < 80 ? 'var(--red)' : 'var(--green)'}"><strong>${compliance}%</strong><span>Reporting</span><div class="muted small">${current} current · ${missing} missing or overdue</div></div>
+      <div class="weekly-summary-item" style="border-left-color:${decisions ? 'var(--red)' : 'var(--border)'}"><strong>${decisions}</strong><span>Decisions required</span></div>
+      <div class="weekly-summary-item" style="border-left-color:${recovery ? 'var(--amber)' : 'var(--border)'}"><strong>${recovery}</strong><span>Recovery plans open</span></div>
     </div>
     <div class="review-toolbar no-print">
-      <div class="review-filters">
+      <div class="review-primary-filters">
         <input type="search" value=${search[0]} onInput=${function(e){search[1](e.target.value)}} placeholder="Search project or manager" aria-label="Search projects" />
-        <select value=${stateFilter[0]} onChange=${function(e){stateFilter[1](e.target.value)}} aria-label="Review state"><option>Exceptions</option><option>Submitted for review</option><option>Missing / overdue</option><option>Decision required</option><option>Recovery open</option><option>All projects</option></select>
-        <select value=${healthFilter[0]} onChange=${function(e){healthFilter[1](e.target.value)}} aria-label="Health"><option>All health</option><option>Red</option><option>Amber</option><option>Green</option></select>
-        <select value=${pillarFilter[0]} onChange=${function(e){pillarFilter[1](e.target.value)}} aria-label="Pillar"><option>All pillars</option>${pillars.map(function(v){return html`<option key=${v}>${v}</option>`})}</select>
-        <select value=${managerFilter[0]} onChange=${function(e){managerFilter[1](e.target.value)}} aria-label="Project Manager"><option>All Project Managers</option>${managers.map(function(v){return html`<option key=${v}>${v}</option>`})}</select>
+        <select value=${stateFilter[0]} onChange=${function(e){stateFilter[1](e.target.value)}} aria-label="Review state"><option>Priority review</option><option>Missing / overdue</option><option>Decision required</option><option>Recovery open</option><option>Submitted for review</option><option>All exceptions</option><option>All projects</option></select>
+        <select value=${sort[0]} onChange=${function(e){sort[1](e.target.value)}} aria-label="Sort projects"><option>Severity</option><option>Decision deadline</option><option>Oldest Pulse</option><option>Project</option></select>
+        <details class="review-more-filters"><summary>Filters</summary><div class="review-more-grid">
+          <select value=${healthFilter[0]} onChange=${function(e){healthFilter[1](e.target.value)}} aria-label="Health"><option>All health</option><option>Red</option><option>Amber</option><option>Green</option></select>
+          <select value=${pillarFilter[0]} onChange=${function(e){pillarFilter[1](e.target.value)}} aria-label="Pillar"><option>All pillars</option>${pillars.map(function(v){return html`<option key=${v}>${v}</option>`})}</select>
+          <select value=${managerFilter[0]} onChange=${function(e){managerFilter[1](e.target.value)}} aria-label="Project Manager"><option>All Project Managers</option>${managers.map(function(v){return html`<option key=${v}>${v}</option>`})}</select>
+        </div></details>
       </div>
-      <select style="width:auto;height:38px" value=${sort[0]} onChange=${function(e){sort[1](e.target.value)}} aria-label="Sort projects"><option>Severity</option><option>Decision deadline</option><option>Oldest Pulse</option><option>Project</option></select>
       ${healthySubmitted.length > 0 && html`<button class="btn secondary small" disabled=${bulkBusy[0]} onClick=${acknowledgeHealthy}>${bulkBusy[0] ? 'Acknowledging...' : 'Acknowledge ' + healthySubmitted.length + ' healthy'}</button>`}
     </div>
     ${notice[0] && html`<p class="small" style="color:var(--green)">${notice[0]}</p>`}
@@ -4155,11 +4174,22 @@ function WeeklyReviewPanel(p) {
     <div class="review-list">
       ${visible.map(function(row){
         var u = row.latest, next = row.health.work.next, due = reviewDueMeta(next && next.planned_end_date);
+        var primaryIssue = !u ? 'Weekly Pulse required'
+          : u.decision_required ? 'Decision requested'
+          : hasGovernanceText(u.blockers) ? u.blockers
+          : next && due.overdue ? next.name + ' - ' + due.label
+          : hasGovernanceText(u.support_needed) ? u.support_needed
+          : row.mismatch ? 'Declared and calculated health do not match'
+          : u.progress_summary || 'No exception detail provided';
+        var issueType = !u ? 'Reporting'
+          : u.decision_required ? 'Decision'
+          : hasGovernanceText(u.blockers) || (next && due.overdue) ? 'Delivery'
+          : hasGovernanceText(u.support_needed) ? 'Support' : 'Update';
         return html`<div class="review-row" key=${row.project.id}>
-          <div><div class="small muted">${row.project.project_id}</div>${u ? pulseReviewBadge(row.reviewStatus) : html`<${Badge} color="red">Missing<//>`}<div class="small muted" style="margin-top:5px">${u ? (row.stale ? row.age + ' days old' : fmtDate(u.update_week || u.created_at)) : 'No Pulse submitted'}</div></div>
-          <div><b><${A} href=${'/projects/'+row.project.id}>${row.project.project_name}<//></b><div class="small muted">${projectManagerLabel(row.project)}</div><div class="review-exception"><${Badge} color="gray">${row.project.digital_pillar || 'Unassigned'}<//>${u && u.support_needed && html`<${Badge} color="amber">Support<//>`}${u && u.decision_required && html`<${Badge} color="red">Decision<//>`}${row.stale && html`<${Badge} color="amber">Stale<//>`}</div></div>
-          <div><div class="review-health-pair"><span class="muted">Declared</span>${u ? healthBadge(row.declared) : html`<span>-</span>`}<span class="muted">System</span>${healthBadge(row.system)}</div><div class=${'review-trend ' + row.trend.tone} style="margin-top:6px">${row.trend.label}</div><div class="small muted" style="margin-top:5px">Plan ${row.health.work.pct == null ? 'not measured' : row.health.work.pct + '%'}</div>${next && html`<div class="small" style="margin-top:5px"><b>${next.name}</b><br /><span class=${'review-deadline ' + (due.overdue ? 'overdue' : '')}>${fmtDate(next.planned_end_date)} - ${due.label}</span></div>`}</div>
-          <div class="review-row-summary">${u ? html`<div><p><b>${u.progress_summary}</b></p><details class="review-detail"><summary>View Pulse details</summary><div class="review-detail-body">${row.mismatch && html`<div><b>RAG difference:</b> system ${row.system}, declared ${row.declared}. ${u.rag_override_reason || ''}</div>`}${hasGovernanceText(u.blockers) && html`<div><b>Blocker:</b> ${u.blockers}<br /><span class="muted">${u.blocker_owner || 'Owner missing'}${u.blocker_due_date ? ' - ' + fmtDate(u.blocker_due_date) : ''}</span></div>`}${hasGovernanceText(u.next_actions) && html`<div><b>Next:</b> ${u.next_actions}<br /><span class="muted">${u.action_owner || 'Owner missing'}${u.action_due_date ? ' - ' + fmtDate(u.action_due_date) : ''}</span></div>`}${hasGovernanceText(u.support_needed) && html`<div><b>Support:</b> ${u.support_needed}</div>`}</div></details></div>` : html`<span class="muted small">Ask the assigned Project Manager to submit this week's Pulse from the project workspace.</span>`}</div>
+          <div><div class="small muted">${row.project.project_id}</div>${u ? pulseReviewBadge(row.reviewStatus) : html`<${Badge} color="red">Missing<//>`}<div class="small muted" style="margin-top:5px">${u ? (row.stale ? row.age + ' days old' : fmtDate(u.update_week || u.created_at)) : 'No Pulse'}</div></div>
+          <div><b><${A} href=${'/projects/'+row.project.id}>${row.project.project_name}<//></b><div class="small muted">${projectManagerLabel(row.project).replace(/\s*<[^>]+>\s*$/, '')}</div><div class="review-exception"><${Badge} color="gray">${row.project.digital_pillar || 'Unassigned'}<//>${row.stale && html`<${Badge} color="amber">Stale<//>`}</div></div>
+          <div><div class="small muted">Health</div>${healthBadge(row.system)}${row.mismatch && html`<div class="small muted" style="margin-top:5px">Declared ${row.declared}</div>`}${next && due.overdue && html`<div class="review-deadline overdue" style="margin-top:7px">${due.label}</div>`}</div>
+          <div class="review-row-summary"><${Badge} color=${issueType==='Decision'||issueType==='Delivery'?'red':issueType==='Reporting'||issueType==='Support'?'amber':'gray'}>${issueType}<//><div class="review-issue" style="margin-top:6px">${primaryIssue}</div>${u && html`<details class="review-detail"><summary>Details</summary><div class="review-detail-body">${u.progress_summary && html`<div><b>Progress:</b> ${u.progress_summary}</div>`}${row.mismatch && html`<div><b>Health:</b> system ${row.system}, declared ${row.declared}. ${u.rag_override_reason || ''}</div>`}${hasGovernanceText(u.blockers) && html`<div><b>Blocker:</b> ${u.blockers}<br /><span class="muted">${u.blocker_owner || 'Owner missing'}${u.blocker_due_date ? ' - ' + fmtDate(u.blocker_due_date) : ''}</span></div>`}${hasGovernanceText(u.next_actions) && html`<div><b>Next:</b> ${u.next_actions}<br /><span class="muted">${u.action_owner || 'Owner missing'}${u.action_due_date ? ' - ' + fmtDate(u.action_due_date) : ''}</span></div>`}${hasGovernanceText(u.support_needed) && html`<div><b>Support:</b> ${u.support_needed}</div>`}</div></details>`}</div>
           <div class="review-row-actions no-print">${u && row.reviewStatus === 'Submitted' ? html`<button class="btn small" onClick=${function(){selection[1]({row:row})}}>Review</button>` : html`<${A} href=${'/projects/'+row.project.id} class="btn secondary small">Open<//>`}</div>
         </div>`;
       })}
